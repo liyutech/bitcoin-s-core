@@ -16,6 +16,7 @@ object BitcoinSCoreBuild extends Build {
     "io.spray" %% "spray-json" % "1.3.2" % "test",  
     "ch.qos.logback" % "logback-classic" % logbackV,
     "org.scalacheck" %% "scalacheck" % "1.13.0" withSources() withJavadoc()
+    //"joda-time" % "joda-time" % "2.9.7"
   )
   
   val main = Project(appName, file(".")).enablePlugins().settings(
