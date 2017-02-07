@@ -9,10 +9,10 @@ import org.bitcoins.core.script.constant.ScriptOperation
 sealed trait OracleOperation extends ScriptOperation
 
 //replace OP_NOP4
-case object OP_PASSINGYDS extends OracleOperation {
+case object OP_APIQUERY1ID extends OracleOperation {
   override def opCode = 179
 }
 
 object OracleOperation extends ScriptOperationFactory[OracleOperation] {
-  override def operations = Seq(OP_PASSINGYDS)
+  override def operations = Seq(OP_APIQUERY1ID)
 }
