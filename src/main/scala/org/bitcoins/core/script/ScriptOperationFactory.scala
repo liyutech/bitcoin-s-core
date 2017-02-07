@@ -6,12 +6,11 @@ import org.bitcoins.core.script.constant._
 import org.bitcoins.core.script.control.ControlOperations
 import org.bitcoins.core.script.crypto.CryptoOperation
 import org.bitcoins.core.script.locktime.LocktimeOperation
-import org.bitcoins.core.script.oracle.OracleOperation
+import org.bitcoins.core.script.oracle.HydrogenOperation
 import org.bitcoins.core.script.reserved.ReservedOperation
 import org.bitcoins.core.script.splice.SpliceOperation
 import org.bitcoins.core.script.stack.StackOperation
 import org.bitcoins.core.util.{BitcoinSLogger, BitcoinSUtil}
-import org.slf4j.LoggerFactory
 
 /**
  * Created by chris on 1/8/16.
@@ -62,6 +61,6 @@ object ScriptOperation extends ScriptOperationFactory[ScriptOperation] {
   lazy val operations = ScriptNumberOperation.operations ++ Seq(OP_FALSE,OP_PUSHDATA1, OP_PUSHDATA2,OP_PUSHDATA4,OP_TRUE) ++ StackOperation.operations ++ LocktimeOperation.operations ++
     CryptoOperation.operations ++ ControlOperations.operations ++ BitwiseOperation.operations ++
     ArithmeticOperation.operations ++  BytesToPushOntoStack.operations ++ SpliceOperation.operations ++
-    ReservedOperation.operations ++ OracleOperation.operations
+    ReservedOperation.operations ++ HydrogenOperation.operations
 
 }

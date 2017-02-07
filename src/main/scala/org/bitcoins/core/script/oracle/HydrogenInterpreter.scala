@@ -9,7 +9,7 @@ import scala.util.{Failure, Success}
 /**
   * Created by chris on 2/1/17.
   */
-trait OracleInterpreter {
+trait HydrogenInterpreter {
 
   /** Takes the identifier and time from the stack then queries our oracle, finally pushes the result from the oracle onto the stack */
   def opApiQuery1Id(program: ScriptProgram) : ScriptProgram = {
@@ -34,8 +34,4 @@ trait OracleInterpreter {
 
   /** Parses the agreed upon time from the given [[ScriptToken]] */
   def parseTime(token: ScriptToken): Long
-
-  private def killActorOnComplete(f: Future[Any], actor: ActorRef, context: ExecutionContext): Unit = f.onComplete {
-    case Success(_) | Failure(_) => actor ! PoisonPill
-  }(context)
 }

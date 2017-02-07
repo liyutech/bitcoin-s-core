@@ -14,7 +14,7 @@ import org.bitcoins.core.script.control._
 import org.bitcoins.core.script.crypto._
 import org.bitcoins.core.script.flag._
 import org.bitcoins.core.script.locktime.{LockTimeInterpreter, OP_CHECKLOCKTIMEVERIFY, OP_CHECKSEQUENCEVERIFY}
-import org.bitcoins.core.script.oracle.{OP_APIQUERY1ID, OracleInterpreter}
+import org.bitcoins.core.script.oracle.{OP_APIQUERY1ID, HydrogenInterpreter}
 import org.bitcoins.core.script.reserved._
 import org.bitcoins.core.script.result._
 import org.bitcoins.core.script.splice._
