@@ -248,6 +248,9 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
     * @return
     */
   def opWithdrawProofVerify(program : ScriptProgram) : ScriptProgram = {
+    require(program.stack.size == 1 || program.stack.size >= 7, "Not enough stack arguments for OP_WITHDRAWPROOFVERIFY")
+    require(program.script.headOption == Some(OP_WITHDRAWPROOFVERIFY), "Script operation is required to be OP_WITHDRAWPROOFVERIFY")
+    
     // comment from bitcoin core
     // In the make-withdraw case, reads the following from the stack:
     // 1. genesis block hash of the chain the withdraw is coming from
