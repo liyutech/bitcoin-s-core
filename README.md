@@ -1,36 +1,69 @@
-[![Build Status](https://travis-ci.org/bitcoin-s/bitcoin-s-core.svg?branch=master)](https://travis-ci.org/bitcoin-s/bitcoin-s-core) [![Coverage Status](https://coveralls.io/repos/github/bitcoin-s/bitcoin-s-core/badge.svg?branch=master)](https://coveralls.io/github/bitcoin-s/bitcoin-s-core?branch=master)
+[![Build Status](https://travis-ci.org/bitcoin-s/bitcoin-s-core.svg?branch=master)](https://travis-ci.org/bitcoin-s/bitcoin-s-core) [![Coverage Status](https://coveralls.io/repos/github/bitcoin-s/bitcoin-s-core/badge.svg?beranch=master)](https://coveralls.io/github/bitcoin-s/bitcoin-s-core?branch=master)
 
-# Bitcoin-S-Core
+# Bitcoin-S-Sidechains
 
-This is the core functionality of bitcoin-s. 
+This is a base implementation for a sidechain in Scala. 
+There are currently two branches under development on this repository
+  - Mainchain - this is a slightly modified version of bitcoin to support the validation of SPV proofs. This is a soft fork change as described in section 3.2 in the sidechains [whitepaper](https://blockstream.com/wp-content/uploads/2014/10/sidechains.pdf)
+  - Alpha - this is the actual sidechain implementation where all new op codes, experimental features etc. happen
+
+# What are sidechains? 
+Sidechains are a blockchain that is pegged to another blockchain. An example of this could be a sidechain designed to facilitate sports betting that is pegged to the bitcoin blockchain. For more information on the design of sidechains please see the [whitepaper](https://blockstream.com/wp-content/uploads/2014/10/sidechains.pdf). 
+
+# Goal
+This implementation of a sidechain is designed to be a base implementation for which other sidechains (and their features) can be built off of. For the most part, it is going to mirror the [elements project](https://github.com/ElementsProject/elements). This project aims to provide a solid base implementation on the JVM. 
+
+# TODO: 
+  - Implement verification of SPV proofs inside of the mainchain branch
+  - Implement REORGPROOFVERIFY & WITHDRAWPROOFVERIFY
+  - [Implement disabled op codes in Bitcoin (OP_OR, OP_AND, OP_XOR...)](https://www.elementsproject.org/elements/opcodes/)
+  - [Signed blocks](https://www.elementsproject.org/elements/signed-blocks/)
+  - [Deterministic Pegs](https://www.elementsproject.org/elements/deterministic-pegs/)
+
+# Examples from Bitcoin-S-Core
+
+Bitcoin-S-Sidechains is a fork of Bitcoin-S-Core. Here are examples of how Bitcoin-S-Core works and how to run the test cases. 
+
+[Quick Build Guide](BUILD_README.md)
 
 This repostitory includes the following functionality:
   - Native Scala objects for various protocol types (Transaction, TransactionInput, ScriptSignatures...)
   - Serializers and deserializers for bitcoin data structures mentioned above
   - An implementation of Bitcoin's Script programming language 
-    - This passes all of the test cases found inside of script_tests.json on the Bitcoin Core repo
-    - Currently up to date through OP_CHECKSEQUENCEVERIFY
+    - Passes all tests found in Bitcoin Core's regression test suite called [script_test.json](https://github.com/bitcoin/bitcoin/blob/master/src/test/data/script_tests.json)
+    - Passes all tests inside of Bitcoin Core's transaction regression test suite [tx_valid.json](https://github.com/bitcoin/bitcoin/blob/master/src/test/data/tx_valid.json) / [tx_invalid.json](https://github.com/bitcoin/bitcoin/blob/master/src/test/data/tx_invalid.json) / 
+    [sighash.json](https://github.com/bitcoin/bitcoin/blob/master/src/test/data/sighash.json)
+    - Currently up to date through segregated witness
   - 90% test coverage throughout the codebase to ensure high quality code. 
   - Functions documented with Scaladocs for user friendliness 
 
+# Design Principles
+  - Immutable data structures everywhere
+  - Algebraic Data Types to allow the compiler to check for exhaustiveness on match statements
+  - Favoring readability over terseness
+
+# Examples from Bitcoin-S-Core
+
+Bitcoin-S-Sidechains is a fork of Bitcoin-S-Core. Here are examples of how Bitcoin-S-Core works and how to run the test cases. 
+
 # Examples
 
-Here is an example scala console session with bitcoin-core-s
+Here is an example scala console session with bitcoins-core
 
 ```scala
 chris@chris:~/dev/bitcoins-core-chris$ sbt console
 
-scala> import org.bitcoins.protocol.transaction._
+scala> import org.bitcoins.core.protocol.transaction._
 import org.bitcoins.protocol.transaction._
 
-scala> import org.bitcoins.protocol.script._
+scala> import org.bitcoins.core.protocol.script._
 import org.bitcoins.protocol.script._
 
 scala> val simpleRawTransaction = "0100000001ccf318f0cbac588a680bbad075aebdda1f211c94ba28125b0f627f9248310db3000000006b4830450221008337ce3ce0c6ac0ab72509f889c1d52701817a2362d6357457b63e3bdedc0c0602202908963b9cf1a095ab3b34b95ce2bc0d67fb0f19be1cc5f7b3de0b3a325629bf01210241d746ca08da0a668735c3e01c1fa02045f2f399c5937079b6434b5a31dfe353ffffffff0210335d05000000001976a914b1d7591b69e9def0feb13254bace942923c7922d88ac48030000000000001976a9145e690c865c2f6f7a9710a474154ab1423abb5b9288ac00000000"
 simpleRawTransaction: String = 0100000001ccf318f0cbac588a680bbad075aebdda1f211c94ba28125b0f627f9248310db3000000006b4830450221008337ce3ce0c6ac0ab72509f889c1d52701817a2362d6357457b63e3bdedc0c0602202908963b9cf1a095ab3b34b95ce2bc0d67fb0f19be1cc5f7b3de0b3a325629bf01210241d746ca08da0a668735c3e01c1fa02045f2f399c5937079b6434b5a31dfe353ffffffff0210335d05000000001976a914b1d7591b69e9def0feb13254bace942923c7922d88ac48030000000000001976a9145e690c865c2f6f7a9710a474154ab1423abb5b9288ac00000000
 
 scala> val tx = Transaction(simpleRawTransaction)
-tx: org.bitcoins.protocol.transaction.Transaction = TransactionImpl(1,List(TransactionInputImpl(TransactionOutPointImpl(b30d3148927f620f5b1228ba941c211fdabdae75d0ba0b688a58accbf018f3cc,0),P2PKHScriptSignatureImpl(4830450221008337ce3ce0c6ac0ab72509f889c1d52701817a2362d6357457b63e3bdedc0c0602202908963b9cf1a095ab3b34b95ce2bc0d67fb0f19be1cc5f7b3de0b3a325629bf01210241d746ca08da0a668735c3e01c1fa02045f2f399c5937079b6434b5a31dfe353,List(BytesToPushOntoStackImpl(72), ScriptConstantImpl(30450221008337ce3ce0c6ac0ab72509f889c1d52701817a2362d6357457b63e3bdedc0c0602202908963b9cf1a095ab3b34b95ce2bc0d67fb0f19be1cc5f7b3de0b3a325629bf01), BytesToPushOntoStackImpl(33), ScriptConstantImpl(0241d746ca08da0a668735c3e01c1fa02045f2f399c5937079b6434b5a31dfe353))),4294967295)),List(TransactionOutputImpl(89994000 ...
+tx: org.bitcoins.core.protocol.transaction.Transaction = TransactionImpl(1,List(TransactionInputImpl(TransactionOutPointImpl(b30d3148927f620f5b1228ba941c211fdabdae75d0ba0b688a58accbf018f3cc,0),P2PKHScriptSignatureImpl(4830450221008337ce3ce0c6ac0ab72509f889c1d52701817a2362d6357457b63e3bdedc0c0602202908963b9cf1a095ab3b34b95ce2bc0d67fb0f19be1cc5f7b3de0b3a325629bf01210241d746ca08da0a668735c3e01c1fa02045f2f399c5937079b6434b5a31dfe353,List(BytesToPushOntoStackImpl(72), ScriptConstantImpl(30450221008337ce3ce0c6ac0ab72509f889c1d52701817a2362d6357457b63e3bdedc0c0602202908963b9cf1a095ab3b34b95ce2bc0d67fb0f19be1cc5f7b3de0b3a325629bf01), BytesToPushOntoStackImpl(33), ScriptConstantImpl(0241d746ca08da0a668735c3e01c1fa02045f2f399c5937079b6434b5a31dfe353))),4294967295)),List(TransactionOutputImpl(89994000 ...
 ```
 
 This gives us an example of a bitcoin transaction that is encoded in hex format that is deserialized to a native Scala object called a Transaction.
@@ -53,33 +86,33 @@ Welcome to Scala version 2.11.7 (Java HotSpot(TM) 64-Bit Server VM, Java 1.8.0_9
 Type in expressions to have them evaluated.
 Type :help for more information.
 
-scala> import org.bitcoins.protocol.script._
-import org.bitcoins.protocol.script._
+scala> import org.bitcoins.core.protocol.script._
+import org.bitcoins.core.protocol.script._
 
-scala> import org.bitcoins.protocol.transaction._
-import org.bitcoins.protocol.transaction._
+scala> import org.bitcoins.core.protocol.transaction._
+import org.bitcoins.core.protocol.transaction._
 
-scala> import org.bitcoins.script._
-import org.bitcoins.script._
+scala> import org.bitcoins.core.script._
+import org.bitcoins.core.script._
 
-scala> import org.bitcoins.script.interpreter._
-import org.bitcoins.script.interpreter._
+scala> import org.bitcoins.core.script.interpreter._
+import org.bitcoins.core.script.interpreter._
 
-scala> import org.bitcoins.policy._
-import org.bitcoins.policy._
+scala> import org.bitcoins.core.policy._
+import org.bitcoins.core.policy._
 
 scala> val spendingTx = Transaction("0100000001ccf318f0cbac588a680bbad075aebdda1f211c94ba28125b0f627f9248310db3000000006b4830450221008337ce3ce0c6ac0ab72509f889c1d52701817a2362d6357457b63e3bdedc0c0602202908963b9cf1a095ab3b34b95ce2bc0d67fb0f19be1cc5f7b3de0b3a325629bf01210241d746ca08da0a668735c3e01c1fa02045f2f399c5937079b6434b5a31dfe353ffffffff0210335d05000000001976a914b1d7591b69e9def0feb13254bace942923c7922d88ac48030000000000001976a9145e690c865c2f6f7a9710a474154ab1423abb5b9288ac00000000")
-spendingTx: org.bitcoins.protocol.transaction.Transaction = TransactionImpl(1,List(TransactionInputImpl(TransactionOutPointImpl(b30d3148927f620f5b1228ba941c211fdabdae75d0ba0b688a58accbf018f3cc,0),P2PKHScriptSignatureImpl(4830450221008337ce3ce0c6ac0ab72509f889c1d52701817a2362d6357457b63e3bdedc0c0602202908963b9cf1a095ab3b34b95ce2bc0d67fb0f19be1cc5f7b3de0b3a325629bf01210241d746ca08da0a668735c3e01c1fa02045f2f399c5937079b6434b5a31dfe353,List(BytesToPushOntoStackImpl(72), ScriptConstantImpl(30450221008337ce3ce0c6ac0ab72509f889c1d52701817a2362d6357457b63e3bdedc0c0602202908963b9cf1a095ab3b34b95ce2bc0d67fb0f19be1cc5f7b3de0b3a325629bf01), BytesToPushOntoStackImpl(33), ScriptConstantImpl(0241d746ca08da0a668735c3e01c1fa02045f2f399c5937079b6434b5a31dfe353))),4294967295)),List(TransactionOutputImpl(8...
+spendingTx: org.bitcoins.core.protocol.transaction.Transaction = TransactionImpl(1,List(TransactionInputImpl(TransactionOutPointImpl(b30d3148927f620f5b1228ba941c211fdabdae75d0ba0b688a58accbf018f3cc,0),P2PKHScriptSignatureImpl(4830450221008337ce3ce0c6ac0ab72509f889c1d52701817a2362d6357457b63e3bdedc0c0602202908963b9cf1a095ab3b34b95ce2bc0d67fb0f19be1cc5f7b3de0b3a325629bf01210241d746ca08da0a668735c3e01c1fa02045f2f399c5937079b6434b5a31dfe353,List(BytesToPushOntoStackImpl(72), ScriptConstantImpl(30450221008337ce3ce0c6ac0ab72509f889c1d52701817a2362d6357457b63e3bdedc0c0602202908963b9cf1a095ab3b34b95ce2bc0d67fb0f19be1cc5f7b3de0b3a325629bf01), BytesToPushOntoStackImpl(33), ScriptConstantImpl(0241d746ca08da0a668735c3e01c1fa02045f2f399c5937079b6434b5a31dfe353))),4294967295)),List(TransactionOutputImpl(8...
 scala> val scriptPubKey = ScriptPubKey("76a91431a420903c05a0a7de2de40c9f02ebedbacdc17288ac")
-scriptPubKey: org.bitcoins.protocol.script.ScriptPubKey = P2PKHScriptPubKeyImpl(76a91431a420903c05a0a7de2de40c9f02ebedbacdc17288ac,List(OP_DUP, OP_HASH160, BytesToPushOntoStackImpl(20), ScriptConstantImpl(31a420903c05a0a7de2de40c9f02ebedbacdc172), OP_EQUALVERIFY, OP_CHECKSIG))
+scriptPubKey: org.bitcoins.core.protocol.script.ScriptPubKey = P2PKHScriptPubKeyImpl(76a91431a420903c05a0a7de2de40c9f02ebedbacdc17288ac,List(OP_DUP, OP_HASH160, BytesToPushOntoStackImpl(20), ScriptConstantImpl(31a420903c05a0a7de2de40c9f02ebedbacdc172), OP_EQUALVERIFY, OP_CHECKSIG))
 
 scala> val inputIndex = 0
 inputIndex: Int = 0
 
 scala> val program = ScriptProgram(spendingTx,scriptPubKey,inputIndex, Policy.standardScriptVerifyFlags)
-program: org.bitcoins.script.PreExecutionScriptProgram = PreExecutionScriptProgramImpl(TransactionSignatureComponentImpl(TransactionImpl(1,List(TransactionInputImpl(TransactionOutPointImpl(b30d3148927f620f5b1228ba941c211fdabdae75d0ba0b688a58accbf018f3cc,0),P2PKHScriptSignatureImpl(4830450221008337ce3ce0c6ac0ab72509f889c1d52701817a2362d6357457b63e3bdedc0c0602202908963b9cf1a095ab3b34b95ce2bc0d67fb0f19be1cc5f7b3de0b3a325629bf01210241d746ca08da0a668735c3e01c1fa02045f2f399c5937079b6434b5a31dfe353,List(BytesToPushOntoStackImpl(72), ScriptConstantImpl(30450221008337ce3ce0c6ac0ab72509f889c1d52701817a2362d6357457b63e3bdedc0c0602202908963b9cf1a095ab3b34b95ce2bc0d67fb0f19be1cc5f7b3de0b3a325629bf01), BytesToPushOntoStackImpl(33), ScriptConstantImpl(0241d746ca08da0a668735c3e01c1fa02045f2f399c5937079...
+program: org.bitcoins.core.script.PreExecutionScriptProgram = PreExecutionScriptProgramImpl(TransactionSignatureComponentImpl(TransactionImpl(1,List(TransactionInputImpl(TransactionOutPointImpl(b30d3148927f620f5b1228ba941c211fdabdae75d0ba0b688a58accbf018f3cc,0),P2PKHScriptSignatureImpl(4830450221008337ce3ce0c6ac0ab72509f889c1d52701817a2362d6357457b63e3bdedc0c0602202908963b9cf1a095ab3b34b95ce2bc0d67fb0f19be1cc5f7b3de0b3a325629bf01210241d746ca08da0a668735c3e01c1fa02045f2f399c5937079b6434b5a31dfe353,List(BytesToPushOntoStackImpl(72), ScriptConstantImpl(30450221008337ce3ce0c6ac0ab72509f889c1d52701817a2362d6357457b63e3bdedc0c0602202908963b9cf1a095ab3b34b95ce2bc0d67fb0f19be1cc5f7b3de0b3a325629bf01), BytesToPushOntoStackImpl(33), ScriptConstantImpl(0241d746ca08da0a668735c3e01c1fa02045f2f399c5937079...
 scala> ScriptInterpreter.run(program)
-res0: org.bitcoins.script.result.ScriptResult = ScriptOk
+res0: org.bitcoins.core.script.result.ScriptResult = ScriptOk
 ```
 # Running tests
 
@@ -110,5 +143,3 @@ chris@chris:~/dev/bitcoins-core$ sbt
 [info] All tests passed.
 >
 ```
-
-
