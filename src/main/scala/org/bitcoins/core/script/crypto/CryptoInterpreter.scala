@@ -1,6 +1,10 @@
 package org.bitcoins.core.script.crypto
 
 import org.bitcoins.core.crypto._
+import org.bitcoins.core.currency.CurrencyUnits
+import org.bitcoins.core.protocol.blockchain.MerkleBlock
+import org.bitcoins.core.protocol.script.{P2PKHScriptPubKey, P2SHScriptPubKey, ScriptPubKey}
+import org.bitcoins.core.protocol.transaction.{Transaction, TransactionOutput}
 import org.bitcoins.core.script.{ScriptProgram, _}
 import org.bitcoins.core.script.constant._
 import org.bitcoins.core.script.control.{ControlOperationsInterpreter, OP_VERIFY}
@@ -243,15 +247,174 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
     * outputs with equal denomination on the parent chain
     *
     * Implementation in elements:
-    * https://github.com/ElementsProject/elements/blob/alpha/src/script/interpreter.cpp#L1308
+    * [[https://github.com/ElementsProject/elements/blob/elements-0.13.1/src/script/interpreter.cpp#L1419]]
     * @param program
     * @return
     */
   def opWithdrawProofVerify(program : ScriptProgram) : ScriptProgram = {
-    require(program.stack.size == 1 || program.stack.size >= 7, "Not enough stack arguments for OP_WITHDRAWPROOFVERIFY")
     require(program.script.headOption == Some(OP_WITHDRAWPROOFVERIFY), "Script operation is required to be OP_WITHDRAWPROOFVERIFY")
-    
-    // comment from bitcoin core
+
+    if (program.stack.size >= 7) {
+      return ScriptProgram(program,ScriptErrorInvalidStackOperation)
+    }
+
+    val genesisHashToken = program.stack.head
+
+    if (genesisHashToken.bytes.size != 32) {
+      return ScriptProgram(program,ScriptErrorWithdrawVerifyFormat)
+    }
+
+    val genesisHash = DoubleSha256Digest(genesisHashToken.bytes)
+
+    //we need the amount of the output, which is contained inside FedPegTransactionSignatureComponent
+    require(program.txSignatureComponent.isInstanceOf[FedPegTransactionSignatureComponent])
+    val fPegTxSigComponent = program.txSignatureComponent.asInstanceOf[FedPegTransactionSignatureComponent]
+
+    val relockScript: ScriptPubKey = ScriptPubKey(Seq(genesisHashToken, OP_WITHDRAWPROOFVERIFY))
+
+      //regular withdraw from the sidechain
+
+      val outputIndex: Int = program.stack(1) match {
+        case number : ScriptNumber => number.toInt
+        case err @ (_: ScriptConstant | _ : ScriptOperation) =>
+          throw new IllegalArgumentException("We expected a ScriptNumber for output index in OP_WITHDRAWPROOFVERIFY, got: " + err)
+      }
+
+      val lockTx: Transaction = program.stack(2) match {
+        case txConstant: ScriptConstant => Transaction(txConstant.bytes)
+        case scriptOp : ScriptOperation =>
+          throw new IllegalArgumentException("We expect a ScriptConstant for lockTx in OP_WITHDRAWPROOFVERIFY, got: " + scriptOp)
+      }
+
+      val merkleBlock: MerkleBlock = program.stack(3) match {
+        case merkleBlockConstant: ScriptConstant => MerkleBlock(merkleBlockConstant.bytes)
+        case scriptOp: ScriptOperation =>
+          throw new IllegalArgumentException("We expect a ScriptConstant for a MerkleBlock in OP_WITHDRAWPROOFVERIFY, got: " + scriptOp)
+      }
+
+      val contract: Seq[Byte] = program.stack(4) match {
+        case constant: ScriptConstant => constant.bytes
+        case scriptOp: ScriptOperation =>
+          throw new IllegalArgumentException("We expect a constant for our contract in OP_WITHDRAWPROOFVERIFY, got: " + scriptOp)
+      }
+
+      val isValidPoW : Boolean = checkBitcoinProofOfWork(merkleBlock)
+
+      if (!isValidPoW) {
+        return ScriptProgram(program,ScriptErrorWithdrawVerifyBlock)
+      }
+      val blockHeader = merkleBlock.blockHeader
+      val partialMerkleTree = merkleBlock.partialMerkleTree
+      val matchedTxs: Seq[DoubleSha256Digest] = partialMerkleTree.extractMatches
+
+      if (partialMerkleTree.tree.value == Some(merkleBlock.blockHeader.merkleRootHash) || matchedTxs.length != 1) {
+        return ScriptProgram(program,ScriptErrorWithdrawVerifyBlock)
+      }
+
+      //We disallow returns from the genesis block, allowing sidechains to
+      //make genesis outputs spendable with a 21m initially-locked-to-btc
+      //distributing transactions
+      if (blockHeader.hash == genesisHash) {
+        return ScriptProgram(program, ScriptErrorWithdrawVerifyBlock)
+      }
+
+/*      CTransaction locktx;
+      CDataStream locktxStream(vlockTx, SER_NETWORK, PROTOCOL_VERSION | SERIALIZE_BITCOIN_BLOCK_OR_TX);
+      locktxStream >> locktx;
+      if (!locktxStream.empty())
+        return set_error(serror, SCRIPT_ERR_WITHDRAW_VERIFY_LOCKTX);*/
+
+      if (outputIndex < 0 || outputIndex >= lockTx.outputs.length) {
+        return ScriptProgram(program, ScriptErrorWithdrawVerifyLockTx)
+      }
+
+      if (matchedTxs.head != lockTx.txId) {
+        return ScriptProgram(program, ScriptErrorWithdrawVerifyLockTx)
+      }
+
+      if (contract.length != 40) {
+        return ScriptProgram(program, ScriptErrorWithdrawVerifyFormat)
+      }
+
+      val scriptDestination: ScriptPubKey = fPegTxSigComponent.fedPegScript
+
+/*      {
+        CScript::iterator sdpc = scriptDestination.begin();
+        vector<unsigned char> vch;
+        while (scriptDestination.GetOp(sdpc, opcodeTmp, vch))
+        {
+          assert((vch.size() == 33 && opcodeTmp < OP_PUSHDATA4) ||
+            (opcodeTmp <= OP_16 && opcodeTmp >= OP_1) || opcodeTmp == OP_CHECKMULTISIG);
+          if (vch.size() == 33)
+          {
+            unsigned char tweak[32];
+            size_t pub_len = 33;
+            unsigned char *pub_start = &(*(sdpc - pub_len));
+            CHMAC_SHA256(pub_start, pub_len).Write(&vcontract[0], 40).Finalize(tweak);
+            secp256k1_pubkey pubkey;
+            assert(secp256k1_ec_pubkey_parse(secp256k1_ctx, &pubkey, pub_start, pub_len) == 1);
+            // If someone creates a tweak that makes this fail, they broke SHA256
+            assert(secp256k1_ec_pubkey_tweak_add(secp256k1_ctx, &pubkey, tweak) == 1);
+            assert(secp256k1_ec_pubkey_serialize(secp256k1_ctx, pub_start, &pub_len, &pubkey, SECP256K1_EC_COMPRESSED) == 1);
+            assert(pub_len == 33);
+          }
+        }
+      }*/
+
+      val expectedP2SH = P2SHScriptPubKey(scriptDestination)
+      val lockedOutput = lockTx.outputs(outputIndex)
+      if (lockedOutput.scriptPubKey != expectedP2SH) {
+        return ScriptProgram(program, ScriptErrorWithdrawVerifyOutputScriptDest)
+      }
+
+      val contractWithoutNonce = contract.take(4) ++ contract.slice(20,contract.length)
+
+      require(contractWithoutNonce.length == 24, "Contract must be 24 bytes in size after removing nonce")
+
+      // We check values by doing the following:
+      // * Tx must relock at least <unlocked coins> - <locked-on-bitcoin coins>
+      // * Tx must send at least the withdraw value to its P2SH withdraw, but may send more
+
+      //not sure what this is
+      //assert(locktx.vout[nlocktxOut].nValue.IsAmount()); // Its a SERIALIZE_BITCOIN_BLOCK_OR_TX
+      val peginAmount = fPegTxSigComponent.witnessTxSigComponent.amount
+      val withdrawlAmount = lockedOutput.value
+
+/*    if (!checker.GetValueIn().IsAmount()) // Heh, you just destroyed coins
+        return set_error(serror, SCRIPT_ERR_WITHDRAW_VERIFY_BLINDED_AMOUNTS);*/
+      val lockValueRequired = peginAmount - withdrawlAmount
+      if (lockValueRequired > CurrencyUnits.zero) {
+        val newLockOutput: Option[TransactionOutput] = fPegTxSigComponent.getOutputOffSetFromCurrent(1)
+/*      if (!newLockOutput.nValue.IsAmount())
+          return set_error(serror, SCRIPT_ERR_WITHDRAW_VERIFY_BLINDED_AMOUNTS);*/
+        if (newLockOutput.isEmpty || newLockOutput.get.scriptPubKey != relockScript ||
+          newLockOutput.get.value < lockValueRequired) {
+          return ScriptProgram(program, ScriptErrorWithdrawVerifyRelockScriptVal)
+        }
+      }
+
+      val withdrawOutput: TransactionOutput = fPegTxSigComponent.getOutputOffSetFromCurrent(0).get
+
+/*      if (!withdrawOutput.nValue.IsAmount())
+        return set_error(serror, SCRIPT_ERR_WITHDRAW_VERIFY_BLINDED_AMOUNTS);*/
+
+      if (withdrawOutput.value < withdrawlAmount) {
+        return ScriptProgram(program, ScriptErrorWithdrawVerifyOutputVal)
+      }
+
+      val expectedWithdrawScriptPubKey: Option[ScriptPubKey] = parseWithdrawScriptPubKey(contractWithoutNonce)
+
+      if (Some(withdrawOutput.scriptPubKey) != expectedWithdrawScriptPubKey) {
+        return ScriptProgram(program,ScriptErrorWithdrawVerifyOutputScript)
+      }
+
+/*
+      #ifndef BITCOIN_SCRIPT_NO_CALLRPC
+      if (GetBoolArg("-validatepegin", false) && !checker.IsConfirmedBitcoinBlock(genesishash, merkleBlock.header.GetHash(), flags & SCRIPT_VERIFY_INCREASE_CONFIRMATIONS_REQUIRED))
+        return set_error(serror, SCRIPT_ERR_WITHDRAW_VERIFY_BLOCKCONFIRMED);
+      #endif
+*/
+    // comment from elements project
     // In the make-withdraw case, reads the following from the stack:
     // 1. genesis block hash of the chain the withdraw is coming from
     // 2. the index within the locking tx's outputs we are claiming
@@ -262,8 +425,12 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
     //
     // In the combine-outputs case, reads the following from the stack:
     // 1. genesis block hash of the chain the withdraw is coming from
-    ???
 
+    val newStack = program.stack.splitAt(7)._2
+
+    val newScript = program.script.tail
+
+    ScriptProgram(program,newStack, newScript)
   }
 
 
@@ -337,5 +504,27 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
       ScriptProgram(program,ScriptErrorWitnessPubKeyType)
     case SignatureValidationErrorNullFail =>
       ScriptProgram(program,ScriptErrorSigNullFail)
+  }
+
+  /** Checks the given [[MerkleBlock]] to see if we have enough proof of work
+    * [[https://github.com/ElementsProject/elements/blob/edaaa8b0f92653d9f770e671c7493f4bab4b48c7/src/pow.cpp#L40]]
+    * */
+  private def checkBitcoinProofOfWork(merkleBlock: MerkleBlock): Boolean = {
+    true
+  }
+
+  /** Parses the withdraw script pubkey from the given contract
+    * [[https://github.com/ElementsProject/elements/blob/6a3b75d257eeb9b4729e658821d3999430a5d5be/src/script/interpreter.cpp#L1567-L1573]]
+    */
+  private def parseWithdrawScriptPubKey(contract: Seq[Byte]): Option[ScriptPubKey] = {
+    if (contract.isEmpty) {
+      None
+    } else if (contract.head == 'P' && contract(1) == '2' && contract(2) == 'S' && contract(3) == 'H') {
+      val redeemScriptHash = Sha256Hash160Digest(contract.slice(4,24))
+      Some(P2SHScriptPubKey(redeemScriptHash))
+    } else if (contract.head == 'P' && contract(1) == '2' && contract(2) == 'P' && contract(3) == 'H') {
+      val pubKeyHash = Sha256Hash160Digest(contract.slice(4,24))
+      Some(P2PKHScriptPubKey(pubKeyHash))
+    } else None
   }
 }

@@ -4,6 +4,7 @@ import org.bitcoins.core.currency.CurrencyUnit
 import org.bitcoins.core.number.UInt32
 import org.bitcoins.core.protocol.script._
 import org.bitcoins.core.protocol.transaction.{BaseTransaction, Transaction, TransactionOutput, WitnessTransaction}
+import org.bitcoins.core.script.constant.ScriptToken
 import org.bitcoins.core.script.flag.ScriptFlag
 
 /**
@@ -50,6 +51,25 @@ sealed trait WitnessV0TransactionSignatureComponent extends TransactionSignature
   /** The amount of [[CurrencyUnit]] this input is spending */
   def amount: CurrencyUnit
 
+}
+
+sealed trait FedPegTransactionSignatureComponent extends TransactionSignatureComponent {
+  def witnessTxSigComponent: WitnessV0TransactionSignatureComponent
+  def fedPegScript: ScriptPubKey
+
+  /** Grabs the [[TransactionOutput]] that is offset from the given inputIndex */
+  def getOutputOffSetFromCurrent(offset: Int): Option[TransactionOutput] = {
+    require(witnessTxSigComponent.inputIndex >= UInt32.zero && witnessTxSigComponent.transaction.outputs.size > 0)
+    val c = witnessTxSigComponent
+    val tx = witnessTxSigComponent.transaction
+    val inputIndex = c.inputIndex.toInt
+    val outputSize = c.transaction.outputs.size
+    if (inputIndex + offset < 0 || outputSize < (inputIndex + offset)) {
+      None
+    } else {
+      Some(transaction.outputs(inputIndex + offset))
+    }
+  }
 }
 
 object TransactionSignatureComponent {
