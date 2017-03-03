@@ -3,6 +3,7 @@ package org.bitcoins.core.gen
 import org.bitcoins.core.crypto.DoubleSha256Digest
 import org.bitcoins.core.number.UInt32
 import org.bitcoins.core.protocol.blockchain.{Block, BlockHeader}
+import org.bitcoins.core.protocol.transaction.Transaction
 import org.scalacheck.Gen
 
 import scala.annotation.tailrec
@@ -11,13 +12,18 @@ import scala.annotation.tailrec
   * Created by tom on 7/6/16.
   */
 trait BlockchainElementsGenerator {
-  /** Generates a random [[Block]], note that we limit this
-    * to 10 transactions currently */
-  def block : Gen[Block] = for {
+
+  /** Generates a block that contains the given txs, plus some more randomly generated ones */
+  def block(txs: Seq[Transaction]): Gen[Block] = for {
     header <- blockHeader
     randomNum <- Gen.choose(1,10)
-    txs <- Gen.listOfN(randomNum, TransactionGenerators.transactions)
-  } yield Block(header, txs)
+    neededTxs = if ((randomNum - txs.size) >= 0) randomNum else 0
+    genTxs <- Gen.listOfN(neededTxs, TransactionGenerators.transaction)
+  } yield Block(header,genTxs ++ txs)
+
+  /** Generates a random [[Block]], note that we limit this
+    * to 10 transactions currently */
+  def block : Gen[Block] = block(Nil)
 
 
   /** Generates a random [[BlockHeader]] */
