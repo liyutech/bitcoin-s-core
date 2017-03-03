@@ -16,9 +16,11 @@ trait MerkleGenerator extends BitcoinSLogger {
   /** Generates a merkle block with the given txs matched inside the [[PartialMerkleTree]] */
   def merkleBlockWithInsertedTxIds(txs: Seq[Transaction]): Gen[(MerkleBlock, Block, Seq[DoubleSha256Digest])] = for {
     block <- BlockchainElementsGenerator.block(txs)
-    txIds <- Gen.someOf(block.transactions.map(_.txId))
-    merkleBlock = MerkleBlock(block,txIds)
-  } yield (merkleBlock, block, txIds)
+    txIds = txs.map(_.txId)
+    randomTxIds <- Gen.someOf(block.transactions.map(_.txId).diff(txIds))
+    allTxIds = randomTxIds ++ txIds
+    merkleBlock = MerkleBlock(block,allTxIds)
+  } yield (merkleBlock, block, allTxIds)
 
   /** Returns a [[MerkleBlock]] including the sequence of hashes inserted in to the bloom filter */
   def merkleBlockWithInsertedTxIds: Gen[(MerkleBlock,Block,Seq[DoubleSha256Digest])] = merkleBlockWithInsertedTxIds(Nil)
