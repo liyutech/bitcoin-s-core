@@ -47,7 +47,7 @@ trait BlockchainElementsGenerator {
     header<- blockHeader(previousBlockHash,nBits,txs)
   } yield header
 
-  /** Generates a [[BlockHeader]]] that has the fields
+  /** Generates a [[BlockHeader]]] that has the fields set to the given values */
   def blockHeader(previousBlockHash: DoubleSha256Digest, nBits: UInt32, txs: Seq[Transaction]): Gen[BlockHeader] = for {
     version <- NumberGenerator.uInt32s
     merkleRootHash = Merkle.computeMerkleRoot(txs)
