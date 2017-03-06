@@ -1,14 +1,21 @@
 package org.bitcoins.core.script.crypto
 
-import org.bitcoins.core.currency.CurrencyUnits
-import org.bitcoins.core.number.UInt32
-import org.bitcoins.core.protocol.script.{P2SHScriptSignature, ScriptPubKey, ScriptSignature, SigVersionBase}
+import org.bitcoins.core.config.TestNet3
+import org.bitcoins.core.crypto.{DoubleSha256Digest, FedPegTransactionSignatureComponent, Sha256Hash160Digest, WitnessV0TransactionSignatureComponent}
+import org.bitcoins.core.currency.{CurrencyUnits, Satoshis}
+import org.bitcoins.core.gen.{CryptoGenerators, MerkleGenerator, ScriptGenerators, TransactionGenerators}
+import org.bitcoins.core.number.{Int64, UInt32}
+import org.bitcoins.core.policy.Policy
+import org.bitcoins.core.protocol.blockchain.TestNetChainParams
+import org.bitcoins.core.protocol.script._
 import org.bitcoins.core.protocol.transaction._
 import org.bitcoins.core.script._
 import org.bitcoins.core.script.constant._
 import org.bitcoins.core.script.flag.{ScriptFlagFactory, ScriptVerifyDerSig, ScriptVerifyNullDummy}
+import org.bitcoins.core.script.interpreter.ScriptInterpreter
 import org.bitcoins.core.script.result._
-import org.bitcoins.core.util.{BitcoinSLogger, ScriptProgramTestUtil, TestUtil, TransactionTestUtil}
+import org.bitcoins.core.script.stack.OP_DROP
+import org.bitcoins.core.util._
 import org.scalatest.{FlatSpec, MustMatchers}
 
 /**
@@ -17,6 +24,7 @@ import org.scalatest.{FlatSpec, MustMatchers}
 class CryptoInterpreterTest extends FlatSpec with MustMatchers with CryptoInterpreter with BitcoinSLogger {
   val stack = List(ScriptConstant("02218AD6CDC632E7AE7D04472374311CEBBBBF0AB540D2D08C3400BB844C654231".toLowerCase))
 
+/*
   "CryptoInterpreter" must "evaluate OP_HASH160 correctly when it is on top of the script stack" in {
 
     val script = List(OP_HASH160)
@@ -172,6 +180,56 @@ class CryptoInterpreterTest extends FlatSpec with MustMatchers with CryptoInterp
     val program = ScriptProgram(ScriptProgram(TestUtil.testProgramExecutionInProgress,stack,script),script,ScriptProgram.OriginalScript)
     val newProgram = ScriptProgramTestUtil.toExecutionInProgressScriptProgram(opCodeSeparator(program))
     newProgram.lastCodeSeparator must be (Some(0))
+  }
+*/
+
+  it must "verify an attempt to withdraw coins from a blockchain" in {
+    // 1. genesis block hash of the chain the withdraw is coming from
+    // 2. the index within the locking tx's outputs we are claiming
+    // 3. the locking tx itself, this is the locking tx on the mainchain, not the relocking tx on sidechain (WithdrawProofReadStackItem)
+    // 4. the merkle block structure which contains the block in which
+    //    the locking transaction is present (WithdrawProofReadStackItem)
+    // 5. The contract which we are expected to send coins to
+
+    //genesis block hash on the chain we are pegged to
+    val genesisBlockHash = DoubleSha256Digest("06226e46111a0b59caaf126043eb5bbf28c34f3a5e332a1fc7b2b73cf188910f")
+
+    val inputIndex = UInt32.zero
+
+    val contract: Seq[Byte] = BitcoinSUtil.decodeHex("5032504800000000000000000000000000000000d76885e2754fcd108c0204eab323e071e24e9a98")
+    val amount = Satoshis(Int64(1000))
+    //note: this has the pushop on the front for the script which elements does not have
+    val fedPegScript = ScriptPubKey("255121025015a9e8e8831cf859e314b5a6a283d8fd6d201ba6aa8c7d20453dfd12fa2bea51ae")
+    val lockingScriptPubKey: ScriptPubKey = P2SHScriptPubKey(fedPegScript)
+    val lockingOutput: TransactionOutput = TransactionOutput(amount,lockingScriptPubKey)
+    val lockTx = buildLockingTx(lockingOutput)
+    val (merkleBlock,block,txIds) = MerkleGenerator.merkleBlockWithInsertedTxIds(Seq(lockTx)).sample.get
+    require(txIds.contains(lockTx.txId))
+    require(merkleBlock.partialMerkleTree.tree.value.get == block.blockHeader.merkleRootHash)
+    require(merkleBlock.partialMerkleTree.extractMatches.length == 1)
+    val sidechainOutput = TransactionOutput(amount,P2PKHScriptPubKey(Sha256Hash160Digest("d76885e2754fcd108c0204eab323e071e24e9a98")))
+    val sidechainReceivingTx = Transaction(TransactionConstants.version,Seq(TransactionGenerators.input.sample.get),
+      Seq(sidechainOutput), TransactionConstants.lockTime)
+
+    val wtxSigComponent = WitnessV0TransactionSignatureComponent(sidechainReceivingTx,inputIndex, lockingOutput,
+      Policy.standardScriptVerifyFlags, SigVersionWitnessV0)
+    val fPegSigComponent = FedPegTransactionSignatureComponent(wtxSigComponent,fedPegScript)
+    val stack: Seq[ScriptToken] = Seq(ScriptConstant(genesisBlockHash.bytes), ScriptNumber.zero,
+      ScriptConstant(lockTx.bytes), ScriptConstant(merkleBlock.bytes), ScriptConstant(contract))
+    val script: Seq[ScriptToken] = Seq(OP_WITHDRAWPROOFVERIFY)
+
+    val program = ScriptProgram(ScriptProgram(fPegSigComponent), stack, script)
+
+    val newProgram = opWithdrawProofVerify(program)
+
+    newProgram.isInstanceOf[ExecutedScriptProgram] must be (false)
+    newProgram.script must be (Nil)
+    newProgram.stack must be (Nil)
+  }
+
+  private def buildLockingTx(lockingOutput: TransactionOutput): Transaction = {
+    val randomInput: TransactionInput = TransactionGenerators.input.sample.get
+    Transaction(TransactionConstants.version,Seq(randomInput), Seq(lockingOutput), TransactionConstants.lockTime)
   }
 
 }

@@ -57,6 +57,13 @@ sealed trait FedPegTransactionSignatureComponent extends TransactionSignatureCom
   def witnessTxSigComponent: WitnessV0TransactionSignatureComponent
   def fedPegScript: ScriptPubKey
 
+
+  override def flags = witnessTxSigComponent.flags
+  override def inputIndex = witnessTxSigComponent.inputIndex
+  override def scriptPubKey = witnessTxSigComponent.scriptPubKey
+  override def sigVersion = witnessTxSigComponent.sigVersion
+  override def transaction = witnessTxSigComponent.transaction
+
   /** Grabs the [[TransactionOutput]] that is offset from the given inputIndex */
   def getOutputOffSetFromCurrent(offset: Int): Option[TransactionOutput] = {
     require(witnessTxSigComponent.inputIndex >= UInt32.zero && witnessTxSigComponent.transaction.outputs.size > 0)
@@ -119,5 +126,16 @@ object WitnessV0TransactionSignatureComponent {
   def apply(transaction : Transaction, inputIndex : UInt32, output : TransactionOutput,
             flags : Seq[ScriptFlag], sigVersion: SignatureVersion): WitnessV0TransactionSignatureComponent = {
     WitnessV0TransactionSignatureComponent(transaction,inputIndex,output.scriptPubKey,flags,output.value, sigVersion)
+  }
+}
+
+object FedPegTransactionSignatureComponent {
+  private case class FedPegTransactionSignatureComponentImpl(witnessTxSigComponent: WitnessV0TransactionSignatureComponent,
+                                                             fedPegScript: ScriptPubKey) extends FedPegTransactionSignatureComponent
+
+
+  def apply(witnessTxSigComponent : WitnessV0TransactionSignatureComponent,
+            fedPegScript: ScriptPubKey): FedPegTransactionSignatureComponent = {
+    FedPegTransactionSignatureComponentImpl(witnessTxSigComponent,fedPegScript)
   }
 }

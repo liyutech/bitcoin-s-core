@@ -29,7 +29,6 @@ trait MerkleGenerator extends BitcoinSLogger {
     * NOTE: Since bloom filters can produce false positives, it is possible that there will be
     * matches in the parital merkle tree that SHOULD NOT be matched. Bloom filters do not guaratnee no
     * false negatives.
-    * @return
     */
   def merkleBlockCreatedWithBloomFilter: Gen[(MerkleBlock, Block,Seq[DoubleSha256Digest], BloomFilter)] = for {
     block <- BlockchainElementsGenerator.block

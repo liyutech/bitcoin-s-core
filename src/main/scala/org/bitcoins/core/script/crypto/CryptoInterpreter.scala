@@ -301,13 +301,17 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
       val isValidPoW : Boolean = checkBitcoinProofOfWork(merkleBlock)
 
       if (!isValidPoW) {
+        logger.error("Invalid proof of work on the given block")
         return ScriptProgram(program,ScriptErrorWithdrawVerifyBlock)
       }
       val blockHeader = merkleBlock.blockHeader
       val partialMerkleTree = merkleBlock.partialMerkleTree
       val matchedTxs: Seq[DoubleSha256Digest] = partialMerkleTree.extractMatches
 
-      if (partialMerkleTree.tree.value == Some(merkleBlock.blockHeader.merkleRootHash) || matchedTxs.length != 1) {
+      if (partialMerkleTree.tree.value != Some(merkleBlock.blockHeader.merkleRootHash) || matchedTxs.length != 1) {
+        logger.error("Same root value: " + (partialMerkleTree.tree.value != Some(merkleBlock.blockHeader.merkleRootHash)))
+        logger.error("Matched more than one tx: " + (matchedTxs.length != 1) + " matchedTxs length: " + matchedTxs.length)
+        logger.error("Incorrect partial merkle tree root hash or matched more than one tx in merkle tree")
         return ScriptProgram(program,ScriptErrorWithdrawVerifyBlock)
       }
 
@@ -315,6 +319,7 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
       //make genesis outputs spendable with a 21m initially-locked-to-btc
       //distributing transactions
       if (blockHeader.hash == genesisHash) {
+        logger.error("Incorrect genesis block hash")
         return ScriptProgram(program, ScriptErrorWithdrawVerifyBlock)
       }
 
@@ -325,14 +330,17 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
         return set_error(serror, SCRIPT_ERR_WITHDRAW_VERIFY_LOCKTX);*/
 
       if (outputIndex < 0 || outputIndex >= lockTx.outputs.length) {
+        logger.error("Incorrect output on the withdrawl locking tx, output index: " + outputIndex)
         return ScriptProgram(program, ScriptErrorWithdrawVerifyLockTx)
       }
 
       if (matchedTxs.head != lockTx.txId) {
+        logger.error("Incorrect withdrawl locking tx ")
         return ScriptProgram(program, ScriptErrorWithdrawVerifyLockTx)
       }
 
       if (contract.length != 40) {
+        logger.error("Incorrect withdrawl contract format")
         return ScriptProgram(program, ScriptErrorWithdrawVerifyFormat)
       }
 
@@ -364,6 +372,9 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
       val expectedP2SH = P2SHScriptPubKey(scriptDestination)
       val lockedOutput = lockTx.outputs(outputIndex)
       if (lockedOutput.scriptPubKey != expectedP2SH) {
+        logger.error("Incorrect withdrawl output script destination")
+        logger.error("Expected p2sh: " + expectedP2SH)
+        logger.error("Locked output scriptPubKey: " + lockedOutput.scriptPubKey)
         return ScriptProgram(program, ScriptErrorWithdrawVerifyOutputScriptDest)
       }
 
@@ -372,6 +383,7 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
       require(contractWithoutNonce.length == 24, "Contract must be 24 bytes in size after removing nonce")
 
       // We check values by doing the following:
+
       // * Tx must relock at least <unlocked coins> - <locked-on-bitcoin coins>
       // * Tx must send at least the withdraw value to its P2SH withdraw, but may send more
 
@@ -389,6 +401,7 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
           return set_error(serror, SCRIPT_ERR_WITHDRAW_VERIFY_BLINDED_AMOUNTS);*/
         if (newLockOutput.isEmpty || newLockOutput.get.scriptPubKey != relockScript ||
           newLockOutput.get.value < lockValueRequired) {
+          logger.error("Incorrect withdrawl relock script")
           return ScriptProgram(program, ScriptErrorWithdrawVerifyRelockScriptVal)
         }
       }
@@ -399,12 +412,16 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
         return set_error(serror, SCRIPT_ERR_WITHDRAW_VERIFY_BLINDED_AMOUNTS);*/
 
       if (withdrawOutput.value < withdrawlAmount) {
+        logger.error("Incorrect withdrawl amount")
         return ScriptProgram(program, ScriptErrorWithdrawVerifyOutputVal)
       }
 
       val expectedWithdrawScriptPubKey: Option[ScriptPubKey] = parseWithdrawScriptPubKey(contractWithoutNonce)
 
-      if (Some(withdrawOutput.scriptPubKey) != expectedWithdrawScriptPubKey) {
+      if (!expectedWithdrawScriptPubKey.contains(withdrawOutput.scriptPubKey)) {
+        logger.error("Incorrect withdrawl scriptPubKey")
+        logger.error("Expected withdraw scriptPubKey: " + expectedWithdrawScriptPubKey)
+        logger.error("Actual withdraw scriptPubKey: " + withdrawOutput.scriptPubKey)
         return ScriptProgram(program,ScriptErrorWithdrawVerifyOutputScript)
       }
 
