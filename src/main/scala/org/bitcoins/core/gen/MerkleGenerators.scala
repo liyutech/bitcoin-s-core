@@ -17,10 +17,8 @@ trait MerkleGenerator extends BitcoinSLogger {
   def merkleBlockWithInsertedTxIds(txs: Seq[Transaction]): Gen[(MerkleBlock, Block, Seq[DoubleSha256Digest])] = for {
     block <- BlockchainElementsGenerator.block(txs)
     txIds = txs.map(_.txId)
-    randomTxIds <- Gen.someOf(block.transactions.map(_.txId).diff(txIds))
-    allTxIds = randomTxIds ++ txIds
-    merkleBlock = MerkleBlock(block,allTxIds)
-  } yield (merkleBlock, block, allTxIds)
+    merkleBlock = MerkleBlock(block,txIds)
+  } yield (merkleBlock, block, txIds)
 
   /** Returns a [[MerkleBlock]] including the sequence of hashes inserted in to the bloom filter */
   def merkleBlockWithInsertedTxIds: Gen[(MerkleBlock,Block,Seq[DoubleSha256Digest])] = merkleBlockWithInsertedTxIds(Nil)
