@@ -191,27 +191,35 @@ class CryptoInterpreterTest extends FlatSpec with MustMatchers with CryptoInterp
     //    the locking transaction is present (WithdrawProofReadStackItem)
     // 5. The contract which we are expected to send coins to
 
-    //genesis block hash on the chain we are pegged to
+    //genesis block hash on the chain we are pegged to (bitcoin regtest chain in this case)
     val genesisBlockHash = DoubleSha256Digest("06226e46111a0b59caaf126043eb5bbf28c34f3a5e332a1fc7b2b73cf188910f")
 
     val inputIndex = UInt32.zero
 
     val contract: Seq[Byte] = BitcoinSUtil.decodeHex("5032504800000000000000000000000000000000d76885e2754fcd108c0204eab323e071e24e9a98")
-    val amount = Satoshis(Int64(1000))
+    val amount = Satoshis(Int64(500))
     //note: this has the pushop on the front for the script which elements does not have
     val fedPegScript = ScriptPubKey("255121025015a9e8e8831cf859e314b5a6a283d8fd6d201ba6aa8c7d20453dfd12fa2bea51ae")
     val lockingScriptPubKey: ScriptPubKey = P2SHScriptPubKey(fedPegScript)
     val lockingOutput: TransactionOutput = TransactionOutput(amount,lockingScriptPubKey)
     val lockTx = buildLockingTx(lockingOutput)
     val (merkleBlock,block,txIds) = MerkleGenerator.merkleBlockWithInsertedTxIds(Seq(lockTx)).sample.get
+
     require(txIds.contains(lockTx.txId))
     require(merkleBlock.partialMerkleTree.tree.value.get == block.blockHeader.merkleRootHash)
     require(merkleBlock.partialMerkleTree.extractMatches.length == 1)
-    val sidechainOutput = TransactionOutput(amount,P2PKHScriptPubKey(Sha256Hash160Digest("d76885e2754fcd108c0204eab323e071e24e9a98")))
-    val sidechainReceivingTx = Transaction(TransactionConstants.version,Seq(TransactionGenerators.input.sample.get),
-      Seq(sidechainOutput), TransactionConstants.lockTime)
 
-    val wtxSigComponent = WitnessV0TransactionSignatureComponent(sidechainReceivingTx,inputIndex, lockingOutput,
+    val (sidechainCreditingTx,outputIndex) = buildSidechainCreditingTx(genesisBlockHash)
+    val sidechainCreditingOutput = sidechainCreditingTx.outputs(outputIndex)
+    val sidechainUserOutput = TransactionOutput(amount,P2PKHScriptPubKey(Sha256Hash160Digest("d76885e2754fcd108c0204eab323e071e24e9a98")))
+    val relockScriptPubKey = ScriptPubKey.fromAsm(Seq(BytesToPushOntoStack(32),
+      ScriptConstant(genesisBlockHash.bytes), OP_WITHDRAWPROOFVERIFY))
+    val relockAmount =sidechainCreditingOutput.value - amount
+    val sidechainFederationRelockOutput = TransactionOutput(relockAmount, relockScriptPubKey)
+    val sidechainReceivingTx = Transaction(TransactionConstants.version,Seq(TransactionGenerators.input.sample.get),
+      Seq(sidechainUserOutput, sidechainFederationRelockOutput), TransactionConstants.lockTime)
+
+    val wtxSigComponent = WitnessV0TransactionSignatureComponent(sidechainReceivingTx,inputIndex, sidechainCreditingOutput,
       Policy.standardScriptVerifyFlags, SigVersionWitnessV0)
     val fPegSigComponent = FedPegTransactionSignatureComponent(wtxSigComponent,fedPegScript)
     val stack: Seq[ScriptToken] = Seq(ScriptConstant(genesisBlockHash.bytes), ScriptNumber.zero,
@@ -222,14 +230,75 @@ class CryptoInterpreterTest extends FlatSpec with MustMatchers with CryptoInterp
 
     val newProgram = opWithdrawProofVerify(program)
 
+    logger.error("Spending tx: "+  sidechainReceivingTx)
+    logger.error("Spending tx hex: " + sidechainReceivingTx.hex)
     newProgram.isInstanceOf[ExecutedScriptProgram] must be (false)
     newProgram.script must be (Nil)
     newProgram.stack must be (Nil)
   }
+
+  it must "fail to verify an attempt to withdraw coins from a blockchain if we do not have a valid relock script" in {
+    // 1. genesis block hash of the chain the withdraw is coming from
+    // 2. the index within the locking tx's outputs we are claiming
+    // 3. the locking tx itself, this is the locking tx on the mainchain, not the relocking tx on sidechain (WithdrawProofReadStackItem)
+    // 4. the merkle block structure which contains the block in which
+    //    the locking transaction is present (WithdrawProofReadStackItem)
+    // 5. The contract which we are expected to send coins to
+
+    //genesis block hash on the chain we are pegged to (bitcoin regtest chain in this case)
+    val genesisBlockHash = DoubleSha256Digest("06226e46111a0b59caaf126043eb5bbf28c34f3a5e332a1fc7b2b73cf188910f")
+
+    val inputIndex = UInt32.zero
+
+    val contract: Seq[Byte] = BitcoinSUtil.decodeHex("5032504800000000000000000000000000000000d76885e2754fcd108c0204eab323e071e24e9a98")
+    val amount = Satoshis(Int64(500))
+    //note: this has the pushop on the front for the script which elements does not have
+    val fedPegScript = ScriptPubKey("255121025015a9e8e8831cf859e314b5a6a283d8fd6d201ba6aa8c7d20453dfd12fa2bea51ae")
+    val lockingScriptPubKey: ScriptPubKey = P2SHScriptPubKey(fedPegScript)
+    val lockingOutput: TransactionOutput = TransactionOutput(amount,lockingScriptPubKey)
+    val lockTx = buildLockingTx(lockingOutput)
+    val (merkleBlock,block,txIds) = MerkleGenerator.merkleBlockWithInsertedTxIds(Seq(lockTx)).sample.get
+    require(txIds.contains(lockTx.txId))
+    require(merkleBlock.partialMerkleTree.tree.value.get == block.blockHeader.merkleRootHash)
+    require(merkleBlock.partialMerkleTree.extractMatches.length == 1)
+
+    val (sidechainCreditingTx,outputIndex) = buildSidechainCreditingTx(genesisBlockHash)
+    val sidechainCreditingOutput = sidechainCreditingTx.outputs(outputIndex)
+    val sidechainOutput = TransactionOutput(amount,P2PKHScriptPubKey(Sha256Hash160Digest("d76885e2754fcd108c0204eab323e071e24e9a98")))
+    val sidechainReceivingTx = Transaction(TransactionConstants.version,Seq(TransactionGenerators.input.sample.get),
+      Seq(sidechainOutput), TransactionConstants.lockTime)
+
+    val wtxSigComponent = WitnessV0TransactionSignatureComponent(sidechainReceivingTx,inputIndex, sidechainCreditingOutput,
+      Policy.standardScriptVerifyFlags, SigVersionWitnessV0)
+    val fPegSigComponent = FedPegTransactionSignatureComponent(wtxSigComponent,fedPegScript)
+    val stack: Seq[ScriptToken] = Seq(ScriptConstant(genesisBlockHash.bytes), ScriptNumber.zero,
+      ScriptConstant(lockTx.bytes), ScriptConstant(merkleBlock.bytes), ScriptConstant(contract))
+    val script: Seq[ScriptToken] = Seq(OP_WITHDRAWPROOFVERIFY)
+
+    val program = ScriptProgram(ScriptProgram(fPegSigComponent), stack, script)
+
+    val newProgram = opWithdrawProofVerify(program)
+
+    logger.error("Spending tx: "+  sidechainReceivingTx)
+    logger.error("Spending tx hex: " + sidechainReceivingTx.hex)
+    newProgram.isInstanceOf[ExecutedScriptProgram] must be (true)
+    val errorProgram = newProgram.asInstanceOf[ExecutedScriptProgram]
+    errorProgram.error must be (Some(ScriptErrorWithdrawVerifyRelockScriptVal))
+  }
+
 
   private def buildLockingTx(lockingOutput: TransactionOutput): Transaction = {
     val randomInput: TransactionInput = TransactionGenerators.input.sample.get
     Transaction(TransactionConstants.version,Seq(randomInput), Seq(lockingOutput), TransactionConstants.lockTime)
   }
 
+  /** Builds the crediting OP_WPV and the output index it is located at */
+  private def buildSidechainCreditingTx(genesisBlockHash: DoubleSha256Digest): (Transaction,Int) = {
+    val scriptPubKey = ScriptPubKey.fromAsm(Seq(BytesToPushOntoStack(32),
+      ScriptConstant(genesisBlockHash.bytes), OP_WITHDRAWPROOFVERIFY))
+    val amount = Satoshis(Int64(1000))
+    val outputs = Seq(TransactionOutput(amount,scriptPubKey))
+    val inputs = Seq(TransactionGenerators.input.sample.get)
+    (Transaction(TransactionConstants.version,inputs,outputs,TransactionConstants.lockTime),0)
+  }
 }

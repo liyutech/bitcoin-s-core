@@ -71,7 +71,7 @@ sealed trait FedPegTransactionSignatureComponent extends TransactionSignatureCom
     val tx = witnessTxSigComponent.transaction
     val inputIndex = c.inputIndex.toInt
     val outputSize = c.transaction.outputs.size
-    if (inputIndex + offset < 0 || outputSize < (inputIndex + offset)) {
+    if (inputIndex + offset < 0 || outputSize <= (inputIndex + offset)) {
       None
     } else {
       Some(transaction.outputs(inputIndex + offset))
