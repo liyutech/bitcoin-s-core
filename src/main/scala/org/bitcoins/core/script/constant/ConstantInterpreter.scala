@@ -98,7 +98,8 @@ trait ConstantInterpreter extends BitcoinSLogger {
     if (ScriptFlagUtil.requireMinimalData(program.flags) && program.script(1).bytes.size == 1 &&
       scriptNumOp.isDefined) {
       logger.error("We cannot use an OP_PUSHDATA operation for pushing " +
-        "a script number operation onto the stack, scriptNumberOperation: " + scriptNumOp)
+        "a script number operation onto the stack, pushop: " + program.script.head + " scriptNumberOperation: " + scriptNumOp +
+      "\nrest of script: " + program.script)
       ScriptProgram(program,ScriptErrorMinimalData)
     } else if (ScriptFlagUtil.requireMinimalData(program.flags) && program.script.size > 2 &&
       !BitcoinScriptUtil.isMinimalPush(program.script.head, program.script(2))) {

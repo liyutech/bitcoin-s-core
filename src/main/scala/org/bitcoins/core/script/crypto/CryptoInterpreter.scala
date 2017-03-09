@@ -253,7 +253,7 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
     */
   def opWithdrawProofVerify(program : ScriptProgram) : ScriptProgram = {
     require(program.script.headOption == Some(OP_WITHDRAWPROOFVERIFY), "Script operation is required to be OP_WITHDRAWPROOFVERIFY")
-
+    logger.info("stack: " + program.stack)
     if (program.stack.size >= 7) {
       return ScriptProgram(program,ScriptErrorInvalidStackOperation)
     }
@@ -446,11 +446,9 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
     // In the combine-outputs case, reads the following from the stack:
     // 1. genesis block hash of the chain the withdraw is coming from
 
-    val newStack = program.stack.splitAt(7)._2
-
     val newScript = program.script.tail
 
-    ScriptProgram(program,newStack, newScript)
+    ScriptProgram(program,newScript, ScriptProgram.Script)
   }
 
 

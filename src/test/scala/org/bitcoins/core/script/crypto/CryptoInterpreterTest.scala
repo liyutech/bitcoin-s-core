@@ -195,8 +195,8 @@ class CryptoInterpreterTest extends FlatSpec with MustMatchers with CryptoInterp
     val genesisBlockHash = DoubleSha256Digest("06226e46111a0b59caaf126043eb5bbf28c34f3a5e332a1fc7b2b73cf188910f")
 
     val inputIndex = UInt32.zero
-
-    val contract: Seq[Byte] = BitcoinSUtil.decodeHex("5032504800000000000000000000000000000000d76885e2754fcd108c0204eab323e071e24e9a98")
+    val usersHash = Sha256Hash160Digest("d76885e2754fcd108c0204eab323e071e24e9a98")
+    val contract: Seq[Byte] = BitcoinSUtil.decodeHex("5032504800000000000000000000000000000000") ++ usersHash.bytes
     val amount = Satoshis(Int64(500))
     //note: this has the pushop on the front for the script which elements does not have
     val fedPegScript = ScriptPubKey("255121025015a9e8e8831cf859e314b5a6a283d8fd6d201ba6aa8c7d20453dfd12fa2bea51ae")
@@ -211,10 +211,10 @@ class CryptoInterpreterTest extends FlatSpec with MustMatchers with CryptoInterp
 
     val (sidechainCreditingTx,outputIndex) = buildSidechainCreditingTx(genesisBlockHash)
     val sidechainCreditingOutput = sidechainCreditingTx.outputs(outputIndex)
-    val sidechainUserOutput = TransactionOutput(amount,P2PKHScriptPubKey(Sha256Hash160Digest("d76885e2754fcd108c0204eab323e071e24e9a98")))
+    val sidechainUserOutput = TransactionOutput(amount,P2PKHScriptPubKey(usersHash))
     val relockScriptPubKey = ScriptPubKey.fromAsm(Seq(BytesToPushOntoStack(32),
       ScriptConstant(genesisBlockHash.bytes), OP_WITHDRAWPROOFVERIFY))
-    val relockAmount =sidechainCreditingOutput.value - amount
+    val relockAmount = sidechainCreditingOutput.value - amount
     val sidechainFederationRelockOutput = TransactionOutput(relockAmount, relockScriptPubKey)
     val sidechainReceivingTx = Transaction(TransactionConstants.version,Seq(TransactionGenerators.input.sample.get),
       Seq(sidechainUserOutput, sidechainFederationRelockOutput), TransactionConstants.lockTime)
@@ -234,7 +234,7 @@ class CryptoInterpreterTest extends FlatSpec with MustMatchers with CryptoInterp
     logger.error("Spending tx hex: " + sidechainReceivingTx.hex)
     newProgram.isInstanceOf[ExecutedScriptProgram] must be (false)
     newProgram.script must be (Nil)
-    newProgram.stack must be (Nil)
+    newProgram.stack must be (stack)
   }
 
   it must "fail to verify an attempt to withdraw coins from a blockchain if we do not have a valid relock script" in {

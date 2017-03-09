@@ -275,7 +275,8 @@ object ScriptProgram {
     case w: WitnessV0TransactionSignatureComponent =>
       ScriptProgram(w,stack,script,originalScript,Nil,w.flags,w.amount)
     case f : FedPegTransactionSignatureComponent =>
-      ScriptProgram(f,stack,script,originalScript,Nil,f.flags,f.witnessTxSigComponent.amount)
+      //TODO:
+      PreExecutionScriptProgramImpl(f,stack.toList,script.toList,originalScript.toList,Nil,f.flags)
   }
 
 

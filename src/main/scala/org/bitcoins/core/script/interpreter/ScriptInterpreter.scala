@@ -1,7 +1,7 @@
 package org.bitcoins.core.script.interpreter
 
 import org.bitcoins.core.consensus.Consensus
-import org.bitcoins.core.crypto.{BaseTransactionSignatureComponent, WitnessV0TransactionSignatureComponent}
+import org.bitcoins.core.crypto.{BaseTransactionSignatureComponent, FedPegTransactionSignatureComponent, WitnessV0TransactionSignatureComponent}
 import org.bitcoins.core.currency.{CurrencyUnit, CurrencyUnits}
 import org.bitcoins.core.protocol.CompactSizeUInt
 import org.bitcoins.core.protocol.script._
@@ -81,19 +81,20 @@ trait ScriptInterpreter extends CryptoInterpreter with StackInterpreter with Con
       }
     }
     logger.debug("Executed Script Program: " + executedProgram)
-    if (executedProgram.error.isDefined) executedProgram.error.get
+    val result = if (executedProgram.error.isDefined) executedProgram.error.get
     else if (hasUnexpectedWitness(program)) {
       //note: the 'program' value we pass above is intentional, we need to check the original program
       //as the 'executedProgram' may have had the scriptPubKey value changed to the rebuilt ScriptPubKey of the witness program
-
       ScriptErrorWitnessUnexpected
     }
     else if (executedProgram.stackTopIsTrue && flags.contains(ScriptVerifyCleanStack)) {
       //require that the stack after execution has exactly one element on it
-      if (executedProgram.stack.size == 1) ScriptOk
+      //unless we have the ScriptVerifyWithdraw flag -- this is because we need it to be soft fork compatible
+      if (executedProgram.stack.size == 1 || flags.contains(ScriptVerifyWithdraw)) ScriptOk
       else ScriptErrorCleanStack
     } else if (executedProgram.stackTopIsTrue) ScriptOk
     else ScriptErrorEvalFalse
+    result
   }
 
   /**
@@ -499,7 +500,20 @@ trait ScriptInterpreter extends CryptoInterpreter with StackInterpreter with Con
     * Return true if witness was NOT used, return false if witness was used. */
   private def hasUnexpectedWitness(program: ScriptProgram): Boolean =  {
     val txSigComponent = program.txSignatureComponent
-    logger.debug("TxSigComponent: " + txSigComponent)
+    /** Helper function to check if the witness was used */
+    def witnessUsed(w: WitnessV0TransactionSignatureComponent) : Boolean = {
+      val witnessedUsed = w.scriptPubKey match {
+        case _ : WitnessScriptPubKey => true
+        case _ : P2SHScriptPubKey =>
+          val p2shScriptSig = P2SHScriptSignature(txSigComponent.scriptSignature.bytes)
+          p2shScriptSig.redeemScript.isInstanceOf[WitnessScriptPubKey]
+        case _ : CLTVScriptPubKey | _ : CSVScriptPubKey | _ : MultiSignatureScriptPubKey | _ : NonStandardScriptPubKey |
+             _ : P2PKScriptPubKey | _ : P2PKHScriptPubKey | _ : WitnessCommitment | EmptyScriptPubKey =>
+          w.witness.stack.isEmpty
+      }
+      witnessedUsed
+    }
+
     val unexpectedWitness = txSigComponent match {
       case b : BaseTransactionSignatureComponent =>
         b.transaction match {
@@ -508,16 +522,9 @@ trait ScriptInterpreter extends CryptoInterpreter with StackInterpreter with Con
           case _ : BaseTransaction => false
         }
       case w : WitnessV0TransactionSignatureComponent =>
-        val witnessedUsed = w.scriptPubKey match {
-          case _ : WitnessScriptPubKey => true
-          case _ : P2SHScriptPubKey =>
-            val p2shScriptSig = P2SHScriptSignature(txSigComponent.scriptSignature.bytes)
-            p2shScriptSig.redeemScript.isInstanceOf[WitnessScriptPubKey]
-          case _ : CLTVScriptPubKey | _ : CSVScriptPubKey | _ : MultiSignatureScriptPubKey | _ : NonStandardScriptPubKey |
-            _ : P2PKScriptPubKey | _ : P2PKHScriptPubKey | _ : WitnessCommitment | EmptyScriptPubKey =>
-            w.witness.stack.isEmpty
-        }
-        !witnessedUsed
+        !witnessUsed(w)
+      case f : FedPegTransactionSignatureComponent =>
+        !witnessUsed(f.witnessTxSigComponent)
     }
 
     if (unexpectedWitness) logger.error("Found unexpected witness that was not used by the ScriptProgram: " + program)
