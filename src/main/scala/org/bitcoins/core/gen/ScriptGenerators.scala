@@ -5,11 +5,11 @@ import org.bitcoins.core.currency.{CurrencyUnit, CurrencyUnits}
 import org.bitcoins.core.number.UInt32
 import org.bitcoins.core.policy.Policy
 import org.bitcoins.core.protocol.script.{P2SHScriptPubKey, _}
-import org.bitcoins.core.protocol.transaction.{TransactionConstants, TransactionWitness}
+import org.bitcoins.core.protocol.transaction.{TransactionConstants, TransactionOutput, TransactionWitness}
 import org.bitcoins.core.script.ScriptSettings
 import org.bitcoins.core.script.constant.{OP_16, ScriptNumber}
 import org.bitcoins.core.script.crypto.{HashType, SIGHASH_ALL}
-import org.bitcoins.core.util.BitcoinSLogger
+import org.bitcoins.core.util.{BitcoinSLogger, BitcoinSUtil}
 import org.scalacheck.Gen
 
 /**
@@ -423,6 +423,25 @@ trait ScriptGenerators extends BitcoinSLogger {
     val (s,key) = tuple
     (s,Seq(key))
   }
+
+
+  /** Returns a valid withdrawl script signature, the [[WithdrawScriptPubKey]] it spends and
+    * the federated peg scriptPubkey */
+  def withdrawlScript: Gen[(WithdrawScriptSignature, WithdrawScriptPubKey, ScriptPubKey, CurrencyUnit)] = for {
+    genesisBlockHash <- CryptoGenerators.doubleSha256Digest
+    userSidechainAddr <- CryptoGenerators.sha256Hash160Digest
+    reserveAmount <- CurrencyUnitGenerator.satoshis
+    amount <- CurrencyUnitGenerator.satoshis.suchThat(_ <= reserveAmount)
+    (sidechainCreditingTx,outputIndex) = TransactionGenerators.buildSidechainCreditingTx(genesisBlockHash, reserveAmount)
+    sidechainCreditingOutput = sidechainCreditingTx.outputs(outputIndex.toInt)
+
+    contract = BitcoinSUtil.decodeHex("5032504800000000000000000000000000000000") ++ userSidechainAddr.bytes
+    (fedPegScript,_) <- ScriptGenerators.scriptPubKey
+    lockingScriptPubKey = P2SHScriptPubKey(fedPegScript)
+    (lockTx,lockTxOutputIndex) = TransactionGenerators.buildCreditingTransaction(lockingScriptPubKey,amount)
+    (merkleBlock,_,_) <- MerkleGenerator.merkleBlockWithInsertedTxIds(Seq(lockTx))
+    withdrawlScriptSig = WithdrawScriptSignature(contract,merkleBlock,lockTx,outputIndex)
+  } yield (withdrawlScriptSig,sidechainCreditingOutput.scriptPubKey.asInstanceOf[WithdrawScriptPubKey],fedPegScript,reserveAmount)
 }
 
 object ScriptGenerators extends ScriptGenerators

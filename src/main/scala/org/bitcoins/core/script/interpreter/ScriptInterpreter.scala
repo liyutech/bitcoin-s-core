@@ -75,7 +75,7 @@ trait ScriptInterpreter extends CryptoInterpreter with StackInterpreter with Con
             if (p2shEnabled) executeP2shScript(scriptSigExecutedProgram, program, p2sh)
             else scriptPubKeyExecutedProgram
           case _ : P2PKHScriptPubKey | _: P2PKScriptPubKey | _: MultiSignatureScriptPubKey | _: CSVScriptPubKey |
-              _ : CLTVScriptPubKey | _ : NonStandardScriptPubKey | _ : WitnessCommitment | EmptyScriptPubKey =>
+              _ : CLTVScriptPubKey | _ : NonStandardScriptPubKey | _ : WitnessCommitment | _: WithdrawScriptPubKey | EmptyScriptPubKey =>
             scriptPubKeyExecutedProgram
         }
       }
@@ -508,7 +508,8 @@ trait ScriptInterpreter extends CryptoInterpreter with StackInterpreter with Con
           val p2shScriptSig = P2SHScriptSignature(txSigComponent.scriptSignature.bytes)
           p2shScriptSig.redeemScript.isInstanceOf[WitnessScriptPubKey]
         case _ : CLTVScriptPubKey | _ : CSVScriptPubKey | _ : MultiSignatureScriptPubKey | _ : NonStandardScriptPubKey |
-             _ : P2PKScriptPubKey | _ : P2PKHScriptPubKey | _ : WitnessCommitment | EmptyScriptPubKey =>
+             _ : P2PKScriptPubKey | _ : P2PKHScriptPubKey | _ : WitnessCommitment |
+             _: WithdrawScriptPubKey | EmptyScriptPubKey =>
           w.witness.stack.isEmpty
       }
       witnessedUsed

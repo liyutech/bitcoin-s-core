@@ -231,35 +231,18 @@ trait TransactionGenerators extends BitcoinSLogger {
     */
   def withdrawlTransaction: Gen[(FedPegTransactionSignatureComponent, Seq[ECPrivateKey])] = for {
     genesisBlockHash <- CryptoGenerators.doubleSha256Digest
-    userSidechainAddr <- CryptoGenerators.sha256Hash160Digest
-    contract = BitcoinSUtil.decodeHex("5032504800000000000000000000000000000000") ++ userSidechainAddr.bytes
-    amount <- CurrencyUnitGenerator.satoshis
-    (fedPegScript,_) <- ScriptGenerators.scriptPubKey
-    lockingScriptPubKey = P2SHScriptPubKey(fedPegScript)
-    (lockTx,lockTxOutputIndex) = buildCreditingTransaction(lockingScriptPubKey,amount)
-    (merkleBlock,_,_) <- MerkleGenerator.merkleBlockWithInsertedTxIds(Seq(lockTx))
-
-    reserveAmount <- CurrencyUnitGenerator.satoshis.suchThat(_ >= amount)
+    (scriptSig,scriptPubKey,fedPegScript,reserveAmount) <- ScriptGenerators.withdrawlScript
     (sidechainCreditingTx,outputIndex) = buildSidechainCreditingTx(genesisBlockHash, reserveAmount)
     sidechainCreditingOutput = sidechainCreditingTx.outputs(outputIndex.toInt)
-    sidechainUserOutput = TransactionOutput(amount,P2PKHScriptPubKey(userSidechainAddr))
+    sidechainUserOutput = TransactionOutput(scriptSig.withdrawlAmount,P2PKHScriptPubKey(scriptSig.userHash))
 
-    n = ScriptNumberOperation.fromNumber(lockTxOutputIndex.underlying.toInt).getOrElse(ScriptNumber(lockTxOutputIndex.toInt))
-    scriptSig = ScriptSignature.fromAsm(Seq(
-      BytesToPushOntoStack(contract.length),
-      ScriptConstant(contract)) ++
-      BitcoinScriptUtil.calculatePushOp(merkleBlock.bytes) ++
-      Seq(ScriptConstant(merkleBlock.bytes)) ++
-      BitcoinScriptUtil.calculatePushOp(lockTx.bytes) ++
-      Seq(ScriptConstant(lockTx.bytes)) ++
-      BitcoinScriptUtil.calculatePushOp(n) ++
-      Seq(n)
-    )
-    federationChange = reserveAmount - amount
-    outputs = Seq(TransactionOutput(amount,P2PKHScriptPubKey(userSidechainAddr)),
+    n = ScriptNumberOperation.fromNumber(scriptSig.lockTxOutputIndex.toInt).getOrElse(ScriptNumber(scriptSig.lockTxOutputIndex.toInt))
+
+    federationChange = reserveAmount - scriptSig.withdrawlAmount
+    outputs = Seq(TransactionOutput(scriptSig.withdrawlAmount,P2PKHScriptPubKey(scriptSig.userHash)),
       TransactionOutput(federationChange, sidechainCreditingTx.outputs(outputIndex.toInt).scriptPubKey))
     sequence <- NumberGenerator.uInt32s
-    inputs = Seq(TransactionInput(TransactionOutPoint(sidechainCreditingTx.txId, outputIndex),scriptSig, sequence))
+    inputs = Seq(TransactionInput(TransactionOutPoint(sidechainCreditingTx.txId, outputIndex), scriptSig, sequence))
     inputIndex = UInt32.zero
     version <- NumberGenerator.uInt32s
     lockTime <- NumberGenerator.uInt32s
@@ -346,7 +329,7 @@ trait TransactionGenerators extends BitcoinSLogger {
   }
 
   /** Builds the crediting OP_WPV and the output index it is located at */
-  private def buildSidechainCreditingTx(genesisBlockHash: DoubleSha256Digest, reserveAmount: CurrencyUnit): (Transaction,UInt32) = {
+  def buildSidechainCreditingTx(genesisBlockHash: DoubleSha256Digest, reserveAmount: CurrencyUnit): (Transaction,UInt32) = {
     val scriptPubKey = ScriptPubKey.fromAsm(Seq(BytesToPushOntoStack(32),
       ScriptConstant(genesisBlockHash.bytes), OP_WITHDRAWPROOFVERIFY))
     val outputs = Seq(TransactionOutput(reserveAmount,scriptPubKey))

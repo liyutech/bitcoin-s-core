@@ -1,9 +1,14 @@
 package org.bitcoins.core.protocol.script
 
-import org.bitcoins.core.crypto.{ECDigitalSignature, ECPublicKey}
+import org.bitcoins.core.crypto.{ECDigitalSignature, ECPublicKey, Sha256Hash160Digest}
+import org.bitcoins.core.currency.CurrencyUnit
+import org.bitcoins.core.number.UInt32
+import org.bitcoins.core.protocol.blockchain.MerkleBlock
+import org.bitcoins.core.protocol.transaction.Transaction
 import org.bitcoins.core.protocol.{CompactSizeUInt, NetworkElement}
 import org.bitcoins.core.script.constant._
 import org.bitcoins.core.serializers.script.{RawScriptSignatureParser, ScriptParser}
+import org.bitcoins.core.util
 import org.bitcoins.core.util._
 
 import scala.util.{Failure, Success, Try}
@@ -458,6 +463,7 @@ object ScriptSignature extends Factory[ScriptSignature] with BitcoinSLogger {
       MultiSignatureScriptSignature.fromAsm(tokens)
     case _ if P2PKHScriptSignature.isP2PKHScriptSig(tokens) => P2PKHScriptSignature.fromAsm(tokens)
     case _ if P2PKScriptSignature.isP2PKScriptSignature(tokens) => P2PKScriptSignature.fromAsm(tokens)
+    case _ if WithdrawScriptSignature.isValidWithdrawScriptSig(tokens) => WithdrawScriptSignature.fromAsm(tokens)
     case _ => NonStandardScriptSignature.fromAsm(tokens)
   }
 
@@ -484,3 +490,78 @@ object ScriptSignature extends Factory[ScriptSignature] with BitcoinSLogger {
   def apply(tokens : Seq[ScriptToken], scriptPubKey : ScriptPubKey) : ScriptSignature = fromScriptPubKey(tokens, scriptPubKey)
 }
 
+/** Withdraw signatures have the format
+  * <contract> <merkle block> <locking tx on mainchain> <output index in locking tx>
+  * */
+sealed trait WithdrawScriptSignature extends ScriptSignature {
+  override def signatures = Nil
+
+  def contract: Seq[Byte] = asm(1).bytes
+
+  /** The hash for which we need to pay to on the sidechain
+    * This is the address the user specified when paying to our
+    * p2sh address on the blockchain we are pegged to */
+  def userHash: Sha256Hash160Digest = Sha256Hash160Digest(contract.takeRight(20))
+
+  /** [[MerkleBlock]] that proves the [[lockingTransaction]] is included in the block */
+  def merkleBlock: MerkleBlock = MerkleBlock(asm(merkleBlockIndex).bytes)
+
+  /** Index of merkle block constant in [[asm]] Sequence */
+  private def merkleBlockIndex: Int = {
+    if (Seq(OP_PUSHDATA1, OP_PUSHDATA2, OP_PUSHDATA4).contains(asm(3))) 5
+    else 4
+  }
+
+  /** The transaction that locks coins on the blockchain we are pegged to */
+  def lockingTransaction: Transaction = {
+    val mbIndex = merkleBlockIndex
+    val bytes = if (Seq(OP_PUSHDATA1, OP_PUSHDATA2, OP_PUSHDATA4).contains(asm(mbIndex+1))) {
+      asm(mbIndex + 3).bytes
+    } else asm(mbIndex + 2).bytes
+    Transaction(bytes)
+  }
+
+  /** The amount the user is withdrawing from the blockchain we are pegged to to our sidechain */
+  def withdrawlAmount: CurrencyUnit = lockingTransaction.outputs(lockTxOutputIndex.toInt).value
+
+
+  def lockTxOutputIndex: ScriptNumber = asm.last match {
+    case num: ScriptNumber => num
+  }
+}
+
+object WithdrawScriptSignature extends ScriptFactory[WithdrawScriptSignature] {
+  private case class WithdrawScriptSignatureImpl(hex: String) extends WithdrawScriptSignature
+
+  def apply(contract: Seq[Byte], merkleBlock: MerkleBlock, lockingTx: Transaction, outputIndex: UInt32): WithdrawScriptSignature = {
+    val num: ScriptNumber = ScriptNumberOperation.fromNumber(outputIndex.toInt).getOrElse(ScriptNumber(outputIndex.toInt))
+
+    val asm: Seq[ScriptToken] = Seq(BytesToPushOntoStack(40), ScriptConstant(contract)) ++
+      BitcoinScriptUtil.calculatePushOp(merkleBlock.bytes) ++
+      Seq(ScriptConstant(merkleBlock.bytes)) ++
+      BitcoinScriptUtil.calculatePushOp(lockingTx.bytes) ++
+      Seq(ScriptConstant(lockingTx.bytes)) ++
+      BitcoinScriptUtil.calculatePushOp(num) ++
+      Seq(num)
+    fromAsm(asm)
+  }
+  override def fromBytes(bytes: Seq[Byte]): WithdrawScriptSignature = {
+    val asm = RawScriptSignatureParser.read(bytes).asm
+    fromAsm(asm)
+  }
+
+  override def fromAsm(asm: Seq[ScriptToken]): WithdrawScriptSignature = {
+    buildScript(asm, WithdrawScriptSignatureImpl(_),isValidWithdrawScriptSig(_),"Expected valid withdraw scriptsig, got: " + asm)
+  }
+
+  /**
+    * Checks if we have a valid [[WithdrawScriptSignature]]
+    * [[https://github.com/ElementsProject/elements/blob/a6c67028619da3d5f55fb620b9a83dc45c8f2a8e/src/script/script.cpp#L217]]
+    */
+  def isValidWithdrawScriptSig(asm: Seq[ScriptToken]): Boolean = {
+    val isPushOnly = BitcoinScriptUtil.isPushOnly(asm)
+    isPushOnly
+  }
+
+
+}
