@@ -228,6 +228,7 @@ object P2SHScriptSignature extends ScriptFactory[P2SHScriptSignature]  {
           case x : UnassignedWitnessScriptPubKey => true
           case x : NonStandardScriptPubKey => false
           case x : WitnessCommitment => false
+          case x : WithdrawScriptPubKey => false
           case EmptyScriptPubKey => false
         }
       case Failure(_) => false
@@ -388,7 +389,7 @@ object CLTVScriptSignature extends Factory[CLTVScriptSignature] {
     case _: WitnessScriptPubKeyV0 | _ : UnassignedWitnessScriptPubKey =>
       //bare segwit always has an empty script sig, see BIP141
       CLTVScriptSignature(EmptyScriptSignature)
-    case x @ (_ : NonStandardScriptPubKey | _ : P2SHScriptPubKey | _ : WitnessCommitment) =>
+    case x @ (_ : NonStandardScriptPubKey | _ : P2SHScriptPubKey | _ : WitnessCommitment | _ : WithdrawScriptPubKey) =>
       throw new IllegalArgumentException("A NonStandardScriptSignature or P2SHScriptSignature or WitnessCommitment cannot be" +
         "the underlying scriptSig in a CLTVScriptSignature. Got: " + x)
   }
@@ -433,7 +434,7 @@ object CSVScriptSignature extends Factory[CSVScriptSignature] {
     case _: WitnessScriptPubKeyV0 | _ : UnassignedWitnessScriptPubKey =>
       //bare segwit always has an empty script sig, see BIP141
       CSVScriptSignature(EmptyScriptSignature)
-    case x @ (_ : NonStandardScriptPubKey | _ : P2SHScriptPubKey | _: WitnessCommitment) =>
+    case x @ (_ : NonStandardScriptPubKey | _ : P2SHScriptPubKey | _: WitnessCommitment | _: WithdrawScriptPubKey) =>
       throw new IllegalArgumentException("A NonStandardScriptPubKey/P2SHScriptPubKey/WitnessCommitment cannot be" +
       "the underlying scriptSig in a CSVScriptSignature. Got: " + x)
   }
@@ -485,6 +486,7 @@ object ScriptSignature extends Factory[ScriptSignature] with BitcoinSLogger {
     case _: WitnessScriptPubKeyV0 | _: UnassignedWitnessScriptPubKey  => EmptyScriptSignature
     case EmptyScriptPubKey => if (tokens.isEmpty) EmptyScriptSignature else NonStandardScriptSignature.fromAsm(tokens)
     case _ : WitnessCommitment => throw new IllegalArgumentException("Cannot spend witness commitment scriptPubKey")
+    case s : WithdrawScriptPubKey => WithdrawScriptSignature.fromAsm(tokens)
   }
 
   def apply(tokens : Seq[ScriptToken], scriptPubKey : ScriptPubKey) : ScriptSignature = fromScriptPubKey(tokens, scriptPubKey)
@@ -525,8 +527,17 @@ sealed trait WithdrawScriptSignature extends ScriptSignature {
   def withdrawlAmount: CurrencyUnit = lockingTransaction.outputs(lockTxOutputIndex.toInt).value
 
 
-  def lockTxOutputIndex: ScriptNumber = asm.last match {
-    case num: ScriptNumber => num
+  def lockTxOutputIndex: UInt32 = asm.last match {
+    case scriptNumOp : ScriptNumberOperation =>
+      UInt32(scriptNumOp.underlying)
+    case num: ScriptNumber =>
+      //TODO: Investigate this further, can we technically have negative output indexes as script numbers can be negative?
+      UInt32(num.toLong)
+    case constant: ScriptConstant =>
+      logger.error("Asm: " + asm)
+      throw new IllegalArgumentException("Cannot have a constant represent lockTxOutputIndex, got:" + constant)
+    case scriptOp: ScriptOperation =>
+      throw new IllegalArgumentException("Cannot have a script operation represent a lockTxOutputIndex, got: " + scriptOp)
   }
 }
 
@@ -534,16 +545,20 @@ object WithdrawScriptSignature extends ScriptFactory[WithdrawScriptSignature] {
   private case class WithdrawScriptSignatureImpl(hex: String) extends WithdrawScriptSignature
 
   def apply(contract: Seq[Byte], merkleBlock: MerkleBlock, lockingTx: Transaction, outputIndex: UInt32): WithdrawScriptSignature = {
-    val num: ScriptNumber = ScriptNumberOperation.fromNumber(outputIndex.toInt).getOrElse(ScriptNumber(outputIndex.toInt))
 
-    val asm: Seq[ScriptToken] = Seq(BytesToPushOntoStack(40), ScriptConstant(contract)) ++
+    val num: ScriptNumber = ScriptNumberOperation.fromNumber(outputIndex.toInt).getOrElse(ScriptNumber(outputIndex.toInt))
+    val asm: Seq[ScriptToken] =
+      BitcoinScriptUtil.calculatePushOp(contract) ++
+      Seq(ScriptConstant(contract)) ++
       BitcoinScriptUtil.calculatePushOp(merkleBlock.bytes) ++
       Seq(ScriptConstant(merkleBlock.bytes)) ++
       BitcoinScriptUtil.calculatePushOp(lockingTx.bytes) ++
       Seq(ScriptConstant(lockingTx.bytes)) ++
       BitcoinScriptUtil.calculatePushOp(num) ++
       Seq(num)
-    fromAsm(asm)
+    val scriptSig = fromAsm(asm)
+    require(scriptSig.asm == asm, "passed in contract: " + contract + "\nexpected asm: " + asm + "\n got asm: " + scriptSig.asm)
+    scriptSig
   }
   override def fromBytes(bytes: Seq[Byte]): WithdrawScriptSignature = {
     val asm = RawScriptSignatureParser.read(bytes).asm

@@ -1,11 +1,14 @@
 package org.bitcoins.core.crypto
 
+import org.bitcoins.core.crypto.WitnessV0TransactionSignatureComponent.WitnessV0TransactionSignatureComponentImpl
 import org.bitcoins.core.currency.CurrencyUnit
 import org.bitcoins.core.number.UInt32
 import org.bitcoins.core.protocol.script._
 import org.bitcoins.core.protocol.transaction.{BaseTransaction, Transaction, TransactionOutput, WitnessTransaction}
 import org.bitcoins.core.script.constant.ScriptToken
 import org.bitcoins.core.script.flag.ScriptFlag
+
+import scala.annotation.tailrec
 
 /**
  * Created by chris on 4/6/16.
@@ -108,6 +111,9 @@ object TransactionSignatureComponent {
       base.inputIndex,scriptPubKey, base.flags)
     case w: WitnessV0TransactionSignatureComponent =>
       TransactionSignatureComponent(w.transaction,w.inputIndex,scriptPubKey,w.flags,w.amount,w.sigVersion)
+    case f : FedPegTransactionSignatureComponent =>
+      FedPegTransactionSignatureComponent(f.transaction,f.inputIndex,scriptPubKey,f.flags,
+        f.witnessTxSigComponent.amount, f.witnessTxSigComponent.sigVersion, f.fedPegScript)
   }
 }
 
@@ -137,5 +143,11 @@ object FedPegTransactionSignatureComponent {
   def apply(witnessTxSigComponent : WitnessV0TransactionSignatureComponent,
             fedPegScript: ScriptPubKey): FedPegTransactionSignatureComponent = {
     FedPegTransactionSignatureComponentImpl(witnessTxSigComponent,fedPegScript)
+  }
+
+  def apply(transaction : Transaction, inputIndex : UInt32, scriptPubKey : ScriptPubKey,
+            flags : Seq[ScriptFlag], amount: CurrencyUnit, sigVersion: SignatureVersion, fedPegScript: ScriptPubKey) : FedPegTransactionSignatureComponent = {
+    val w = WitnessV0TransactionSignatureComponent(transaction,inputIndex,scriptPubKey,flags,amount,sigVersion)
+    FedPegTransactionSignatureComponentImpl(w,fedPegScript)
   }
 }

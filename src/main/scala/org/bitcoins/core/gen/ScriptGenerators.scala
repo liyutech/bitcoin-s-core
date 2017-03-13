@@ -71,6 +71,21 @@ trait ScriptGenerators extends BitcoinSLogger {
   } yield CSVScriptSignature(csv, sigs, pubKeys)
 
 
+  /** Generator for a contract used within a [[WithdrawScriptSignature]] */
+  def contract: Gen[Seq[Byte]] = for {
+    userSidechainAddr <- CryptoGenerators.sha256Hash160Digest
+    contractByte <- NumberGenerator.byte
+    labelAndNonce = 0.until(20).map(_ => contractByte)
+    c = labelAndNonce ++ userSidechainAddr.bytes
+  } yield c
+
+  def withdrawScriptSignature: Gen[WithdrawScriptSignature] = for {
+    c <- contract
+    (merkleBlock,_,_) <- MerkleGenerator.merkleBlockWithInsertedTxIds
+    lockingTx <- TransactionGenerators.transaction
+    outputIndex <- Gen.choose(0,lockingTx.outputs.size)
+  } yield WithdrawScriptSignature(c,merkleBlock,lockingTx,UInt32(outputIndex))
+
   def p2pkScriptPubKey : Gen[(P2PKScriptPubKey, ECPrivateKey)] = for {
     privKey <- CryptoGenerators.privateKey
     pubKey = privKey.publicKey
@@ -141,11 +156,16 @@ trait ScriptGenerators extends BitcoinSLogger {
     hash <- CryptoGenerators.doubleSha256Digest
   } yield (WitnessCommitment(hash),Nil)
 
+  def withdrawScriptPubKey: Gen[(WithdrawScriptPubKey, Seq[ECPrivateKey])] = for {
+    hash <- CryptoGenerators.doubleSha256Digest
+  } yield (WithdrawScriptPubKey(hash),Nil)
+
   def pickRandomNonP2SHScriptPubKey: Gen[(ScriptPubKey, Seq[ECPrivateKey])] = {
     Gen.oneOf(p2pkScriptPubKey.map(privKeyToSeq(_)), p2pkhScriptPubKey.map(privKeyToSeq(_)),
       cltvScriptPubKey.suchThat(!_._1.scriptPubKeyAfterCLTV.isInstanceOf[CSVScriptPubKey]),
       csvScriptPubKey.suchThat(!_._1.scriptPubKeyAfterCSV.isInstanceOf[CLTVScriptPubKey]),
-      multiSigScriptPubKey, witnessScriptPubKeyV0, unassignedWitnessScriptPubKey
+      multiSigScriptPubKey, witnessScriptPubKeyV0, unassignedWitnessScriptPubKey/*,
+      withdrawScriptPubKey*/
     )
   }
 
@@ -162,13 +182,13 @@ trait ScriptGenerators extends BitcoinSLogger {
     Gen.oneOf(p2pkScriptPubKey.map(privKeyToSeq(_)),p2pkhScriptPubKey.map(privKeyToSeq(_)),
       multiSigScriptPubKey,emptyScriptPubKey,
       cltvScriptPubKey,csvScriptPubKey,witnessScriptPubKeyV0,unassignedWitnessScriptPubKey,
-      p2shScriptPubKey, witnessCommitment)
+      p2shScriptPubKey, witnessCommitment/*, withdrawScriptPubKey*/)
   }
 
   /** Generates an arbitrary [[ScriptSignature]] */
   def scriptSignature : Gen[ScriptSignature] = {
     Gen.oneOf(p2pkScriptSignature,p2pkhScriptSignature,multiSignatureScriptSignature,
-      emptyScriptSignature,p2shScriptSignature)
+      emptyScriptSignature,p2shScriptSignature/*, withdrawScriptSignature*/)
   }
 
   /**
@@ -183,6 +203,7 @@ trait ScriptGenerators extends BitcoinSLogger {
     case cltv : CLTVScriptPubKey => cltvScriptSignature
     case csv : CSVScriptPubKey => csvScriptSignature
     case _ : WitnessScriptPubKeyV0 | _ : UnassignedWitnessScriptPubKey => emptyScriptSignature
+    case w: WithdrawScriptPubKey => withdrawlScript.map(_._1)
     case x @ (_: P2SHScriptPubKey | _: NonStandardScriptPubKey | _ : WitnessCommitment) =>
       throw new IllegalArgumentException("Cannot pick for p2sh script pubkey, " +
         "non standard script pubkey or witness commitment got: " + x)
@@ -298,7 +319,7 @@ trait ScriptGenerators extends BitcoinSLogger {
       case _: UnassignedWitnessScriptPubKey | _: WitnessScriptPubKeyV0 =>
         throw new IllegalArgumentException("Cannot created a witness scriptPubKey for a CSVScriptSig since we do not have a witness")
       case _ : P2SHScriptPubKey | _ : CLTVScriptPubKey | _ : CSVScriptPubKey | _ : NonStandardScriptPubKey
-           | _ : WitnessCommitment | EmptyScriptPubKey => throw new IllegalArgumentException("We only " +
+           | _ : WitnessCommitment | _ : WithdrawScriptPubKey | EmptyScriptPubKey => throw new IllegalArgumentException("We only " +
         "want to generate P2PK, P2PKH, and MultiSig ScriptSignatures when creating a CSVScriptSignature")
   }
 
@@ -324,7 +345,7 @@ trait ScriptGenerators extends BitcoinSLogger {
       case _: UnassignedWitnessScriptPubKey | _: WitnessScriptPubKeyV0 =>
         throw new IllegalArgumentException("Cannot created a witness scriptPubKey for a CSVScriptSig since we do not have a witness")
       case _ : P2SHScriptPubKey | _ : CLTVScriptPubKey | _ : CSVScriptPubKey | _ : NonStandardScriptPubKey
-           | _ : WitnessCommitment | EmptyScriptPubKey => throw new IllegalArgumentException("We only " +
+           | _ : WitnessCommitment | _ : WithdrawScriptPubKey | EmptyScriptPubKey => throw new IllegalArgumentException("We only " +
         "want to generate P2PK, P2PKH, and MultiSig ScriptSignatures when creating a CLTVScriptSignature.")
   }
 
@@ -436,7 +457,7 @@ trait ScriptGenerators extends BitcoinSLogger {
     sidechainCreditingOutput = sidechainCreditingTx.outputs(outputIndex.toInt)
 
     contract = BitcoinSUtil.decodeHex("5032504800000000000000000000000000000000") ++ userSidechainAddr.bytes
-    (fedPegScript,_) <- ScriptGenerators.scriptPubKey
+    (fedPegScript,_) <- ScriptGenerators.multiSigScriptPubKey
     lockingScriptPubKey = P2SHScriptPubKey(fedPegScript)
     (lockTx,lockTxOutputIndex) = TransactionGenerators.buildCreditingTransaction(lockingScriptPubKey,amount)
     (merkleBlock,_,_) <- MerkleGenerator.merkleBlockWithInsertedTxIds(Seq(lockTx))

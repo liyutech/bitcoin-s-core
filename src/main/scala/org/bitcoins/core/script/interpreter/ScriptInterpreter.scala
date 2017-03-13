@@ -159,8 +159,9 @@ trait ScriptInterpreter extends CryptoInterpreter with StackInterpreter with Con
                 //treat the segwit scriptpubkey as any other redeem script
                 run(scriptPubKeyExecutedProgram,stack,w)
               }
-            case s @ (_ : P2SHScriptPubKey | _ : P2PKHScriptPubKey | _ : P2PKScriptPubKey | _ : MultiSignatureScriptPubKey |
-              _ : CLTVScriptPubKey | _ : CSVScriptPubKey | _: NonStandardScriptPubKey | _ : WitnessCommitment | EmptyScriptPubKey) =>
+            case s @ (_ : P2SHScriptPubKey | _ : P2PKHScriptPubKey | _ : P2PKScriptPubKey | _ : MultiSignatureScriptPubKey
+                      | _ : CLTVScriptPubKey | _ : CSVScriptPubKey | _: NonStandardScriptPubKey
+                      | _ : WitnessCommitment | _: WithdrawScriptPubKey | EmptyScriptPubKey) =>
               logger.debug("redeemScript: " + s.asm)
               run(scriptPubKeyExecutedProgram,stack,s)
           }
@@ -192,6 +193,18 @@ trait ScriptInterpreter extends CryptoInterpreter with StackInterpreter with Con
         if (scriptSig != EmptyScriptSignature && !w.scriptPubKey.isInstanceOf[P2SHScriptPubKey]) ScriptProgram(scriptPubKeyExecutedProgram,ScriptErrorWitnessMalleated)
         else if (witness.stack.exists(_.size > maxPushSize)) ScriptProgram(scriptPubKeyExecutedProgram, ScriptErrorPushSize)
         else verifyWitnessProgram(witnessVersion, witness, witnessProgram, w)
+
+      case f: FedPegTransactionSignatureComponent =>
+        val scriptSig = scriptPubKeyExecutedProgram.txSignatureComponent.scriptSignature
+        val (witnessVersion,witnessProgram) = (witnessScriptPubKey.witnessVersion, witnessScriptPubKey.witnessProgram)
+        val witness = f.witnessTxSigComponent.witness
+
+        //scriptsig must be empty if we have raw p2wsh
+        //if script pubkey is a P2SHScriptPubKey then we have P2SH(P2WSH)
+        if (scriptSig != EmptyScriptSignature && !f.scriptPubKey.isInstanceOf[P2SHScriptPubKey]) ScriptProgram(scriptPubKeyExecutedProgram,ScriptErrorWitnessMalleated)
+        else if (witness.stack.exists(_.size > maxPushSize)) ScriptProgram(scriptPubKeyExecutedProgram, ScriptErrorPushSize)
+        else verifyWitnessProgram(witnessVersion, witness, witnessProgram, f.witnessTxSigComponent)
+
     }
   }
 
