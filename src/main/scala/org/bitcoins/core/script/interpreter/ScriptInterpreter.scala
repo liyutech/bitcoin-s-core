@@ -411,9 +411,24 @@ trait ScriptInterpreter extends CryptoInterpreter with StackInterpreter with Con
                   val newOpCount = calcOpCount(opCount,OP_CHECKMULTISIGVERIFY) + BitcoinScriptUtil.numPossibleSignaturesOnStack(program).toInt
                   loop(newProgram,newOpCount)
               }
-            case OP_WITHDRAWPROOFVERIFY :: t => loop(opWithdrawProofVerify(p), calcOpCount(opCount, OP_WITHDRAWPROOFVERIFY))
+            case OP_WITHDRAWPROOFVERIFY :: t =>
+              //check if OP_WPV is enforced yet
+              if (program.flags.contains(ScriptVerifyWithdraw)) {
+                loop(opWithdrawProofVerify(p),calcOpCount(opCount,OP_WITHDRAWPROOFVERIFY))
+              }
+              //if not, check to see if we should discourage p
+              else if (ScriptFlagUtil.discourageUpgradableNOPs(p.flags)) {
+                logger.error("We cannot execute a NOP when the ScriptVerifyDiscourageUpgradableNOPs is set")
+                loop(ScriptProgram(p, ScriptErrorDiscourageUpgradableNOPs),calcOpCount(opCount,OP_WITHDRAWPROOFVERIFY))
+              }
+              //in this case, just reat OP_CLTV just like a NOP and remove it from the stack
+              else loop(ScriptProgram(p, p.script.tail, ScriptProgram.Script), calcOpCount(opCount, OP_WITHDRAWPROOFVERIFY))
 
-            case OP_REORGPROOFVERIFY :: t => loop(opReorgProofVerify(p),calcOpCount(opCount, OP_REORGPROOFVERIFY))
+            case OP_REORGPROOFVERIFY :: t =>
+              if (ScriptFlagUtil.discourageUpgradableNOPs(p.flags)) {
+                logger.error("We cannot execute a NOP when the ScriptVerifyDiscourageUpgradableNOPs is set")
+                loop(ScriptProgram(p, ScriptErrorDiscourageUpgradableNOPs),calcOpCount(opCount,OP_REORGPROOFVERIFY))
+              } else loop(opReorgProofVerify(p),calcOpCount(opCount, OP_REORGPROOFVERIFY))
             //reserved operations
             case OP_NOP :: t =>
               //script discourage upgradeable flag does not apply to a OP_NOP

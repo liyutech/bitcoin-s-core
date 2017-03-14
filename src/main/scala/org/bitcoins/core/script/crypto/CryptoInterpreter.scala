@@ -8,7 +8,7 @@ import org.bitcoins.core.protocol.transaction.{EmptyTransactionOutput, Transacti
 import org.bitcoins.core.script.{ScriptProgram, _}
 import org.bitcoins.core.script.constant._
 import org.bitcoins.core.script.control.{ControlOperationsInterpreter, OP_VERIFY}
-import org.bitcoins.core.script.flag.ScriptFlagUtil
+import org.bitcoins.core.script.flag.{ScriptFlagUtil, ScriptVerifyWithdraw}
 import org.bitcoins.core.script.result._
 import org.bitcoins.core.util.{BitcoinSLogger, BitcoinScriptUtil, CryptoUtil}
 
@@ -469,7 +469,10 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
     * @param program
     * @return
     */
-  def opReorgProofVerify(program : ScriptProgram) : ScriptProgram = ???
+  def opReorgProofVerify(program : ScriptProgram) : ScriptProgram = {
+    //TODO: Implement this later
+    ScriptProgram(program,program.script.tail, ScriptProgram.Script)
+  }
 
 
   /**
