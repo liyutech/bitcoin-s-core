@@ -1,6 +1,7 @@
 package org.bitcoins.core.protocol.script
 
 import java.security.SecureRandom
+import java.util.Random
 
 import org.bitcoins.core.crypto.Sha256Hash160Digest
 import org.bitcoins.core.protocol.NetworkElement
@@ -41,9 +42,13 @@ object Contract extends Factory[Contract] {
     Contract(bytes)
   }
 
+  def apply(prefix: ContractPrefix, hash: Sha256Hash160Digest): Contract = {
+    val nonce = new Array[Byte](16)
+    scala.util.Random.nextBytes(nonce)
+    Contract(prefix,nonce,hash)
+  }
+
   override def fromBytes(bytes: Seq[Byte]): Contract = ContractImpl(bytes)
-
-
 }
 
 sealed trait ContractPrefix extends NetworkElement {

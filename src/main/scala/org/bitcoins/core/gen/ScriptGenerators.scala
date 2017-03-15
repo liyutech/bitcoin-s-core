@@ -1,5 +1,7 @@
 package org.bitcoins.core.gen
 
+import java.security.SecureRandom
+
 import org.bitcoins.core.crypto.{TransactionSignatureCreator, _}
 import org.bitcoins.core.currency.{CurrencyUnit, CurrencyUnits}
 import org.bitcoins.core.number.UInt32
@@ -71,10 +73,8 @@ trait ScriptGenerators extends BitcoinSLogger {
   } yield CSVScriptSignature(csv, sigs, pubKeys)
 
   def contract(hash: Sha256Hash160Digest): Gen[Contract] = for {
-    contractByte <- NumberGenerator.byte
-    nonce = 0.until(16).map(_ => contractByte)
     prefix <- contractPrefix
-    c = Contract(prefix,nonce,hash)
+    c = Contract(prefix,hash)
   } yield c
 
   /** Generator for a contract used within a [[WithdrawScriptSignature]] */
