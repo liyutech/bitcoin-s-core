@@ -24,7 +24,6 @@ import org.scalatest.{FlatSpec, MustMatchers}
 class CryptoInterpreterTest extends FlatSpec with MustMatchers with CryptoInterpreter with BitcoinSLogger {
   val stack = List(ScriptConstant("02218AD6CDC632E7AE7D04472374311CEBBBBF0AB540D2D08C3400BB844C654231".toLowerCase))
 
-/*
   "CryptoInterpreter" must "evaluate OP_HASH160 correctly when it is on top of the script stack" in {
 
     val script = List(OP_HASH160)
@@ -181,7 +180,6 @@ class CryptoInterpreterTest extends FlatSpec with MustMatchers with CryptoInterp
     val newProgram = ScriptProgramTestUtil.toExecutionInProgressScriptProgram(opCodeSeparator(program))
     newProgram.lastCodeSeparator must be (Some(0))
   }
-*/
 
   it must "verify an attempt to withdraw coins from a blockchain" in {
     // 1. genesis block hash of the chain the withdraw is coming from
@@ -203,11 +201,8 @@ class CryptoInterpreterTest extends FlatSpec with MustMatchers with CryptoInterp
     val lockingScriptPubKey: ScriptPubKey = P2SHScriptPubKey(fedPegScript)
     val lockingOutput: TransactionOutput = TransactionOutput(amount,lockingScriptPubKey)
     val lockTx = buildLockingTx(lockingOutput)
-    val (merkleBlock,block,txIds) = MerkleGenerator.merkleBlockWithInsertedTxIds(Seq(lockTx)).sample.get
-
-    require(txIds.contains(lockTx.txId))
-    require(merkleBlock.partialMerkleTree.tree.value.get == block.blockHeader.merkleRootHash)
-    require(merkleBlock.partialMerkleTree.extractMatches.length == 1)
+    //TODO: This will fail to generate every now and then because generating a merkle block is expensive
+    val (merkleBlock,_,_) = MerkleGenerator.merkleBlockWithInsertedTxIds(Seq(lockTx)).sample.get
 
     val (sidechainCreditingTx,outputIndex) = buildSidechainCreditingTx(genesisBlockHash)
     val sidechainCreditingOutput = sidechainCreditingTx.outputs(outputIndex)
@@ -229,8 +224,6 @@ class CryptoInterpreterTest extends FlatSpec with MustMatchers with CryptoInterp
 
     val newProgram = opWithdrawProofVerify(program)
 
-    logger.error("Spending tx: "+  sidechainReceivingTx)
-    logger.error("Spending tx hex: " + sidechainReceivingTx.hex)
     newProgram.isInstanceOf[ExecutedScriptProgram] must be (false)
     newProgram.script must be (Nil)
     newProgram.stack must be (stack)
@@ -256,10 +249,8 @@ class CryptoInterpreterTest extends FlatSpec with MustMatchers with CryptoInterp
     val lockingScriptPubKey: ScriptPubKey = P2SHScriptPubKey(fedPegScript)
     val lockingOutput: TransactionOutput = TransactionOutput(amount,lockingScriptPubKey)
     val lockTx = buildLockingTx(lockingOutput)
-    val (merkleBlock,block,txIds) = MerkleGenerator.merkleBlockWithInsertedTxIds(Seq(lockTx)).sample.get
-    require(txIds.contains(lockTx.txId))
-    require(merkleBlock.partialMerkleTree.tree.value.get == block.blockHeader.merkleRootHash)
-    require(merkleBlock.partialMerkleTree.extractMatches.length == 1)
+    //TODO: This will fail to generate every now and then because generating a merkle block is expensive
+    val (merkleBlock,_,_) = MerkleGenerator.merkleBlockWithInsertedTxIds(Seq(lockTx)).sample.get
 
     val (sidechainCreditingTx,outputIndex) = buildSidechainCreditingTx(genesisBlockHash)
     val sidechainCreditingOutput = sidechainCreditingTx.outputs(outputIndex)
@@ -278,8 +269,6 @@ class CryptoInterpreterTest extends FlatSpec with MustMatchers with CryptoInterp
 
     val newProgram = opWithdrawProofVerify(program)
 
-    logger.error("Spending tx: "+  sidechainReceivingTx)
-    logger.error("Spending tx hex: " + sidechainReceivingTx.hex)
     newProgram.isInstanceOf[ExecutedScriptProgram] must be (true)
     val errorProgram = newProgram.asInstanceOf[ExecutedScriptProgram]
     errorProgram.error must be (Some(ScriptErrorWithdrawVerifyRelockScriptVal))

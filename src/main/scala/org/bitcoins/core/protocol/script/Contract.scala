@@ -10,7 +10,9 @@ import org.bitcoins.core.util.{BitcoinSUtil, Factory}
   * Created by chris on 3/15/17.
   */
 
-/** Pays to contract hash */
+/** Pays to contract hash
+  * This data structure represents a contract inside of a [[WithdrawScriptSignature]]
+  * */
 sealed trait Contract extends NetworkElement {
   /** Prefix is either [[P2SHContractPrefix]] or [[P2PHContractPrefix]] */
   def prefix: ContractPrefix = ContractPrefix(bytes.take(4))
