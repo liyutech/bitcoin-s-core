@@ -234,12 +234,13 @@ trait TransactionGenerators extends BitcoinSLogger {
     (scriptSig,scriptPubKey,fedPegScript,reserveAmount) <- ScriptGenerators.withdrawlScript
     (sidechainCreditingTx,outputIndex) = buildSidechainCreditingTx(genesisBlockHash, reserveAmount)
     sidechainCreditingOutput = sidechainCreditingTx.outputs(outputIndex.toInt)
-    sidechainUserOutput = TransactionOutput(scriptSig.withdrawlAmount,P2PKHScriptPubKey(scriptSig.userHash))
+    contract = scriptSig.contract
+    sidechainUserOutput = TransactionOutput(scriptSig.withdrawlAmount,createUserSidechainScriptPubKey(contract))
 
     n = ScriptNumberOperation.fromNumber(scriptSig.lockTxOutputIndex.toInt).getOrElse(ScriptNumber(scriptSig.lockTxOutputIndex.toInt))
 
     federationChange = reserveAmount - scriptSig.withdrawlAmount
-    outputs = Seq(TransactionOutput(scriptSig.withdrawlAmount,P2PKHScriptPubKey(scriptSig.userHash)),
+    outputs = Seq(sidechainUserOutput,
       TransactionOutput(federationChange, sidechainCreditingTx.outputs(outputIndex.toInt).scriptPubKey))
     sequence <- NumberGenerator.uInt32s
     inputs = Seq(TransactionInput(TransactionOutPoint(sidechainCreditingTx.txId, outputIndex), scriptSig, sequence))
@@ -415,6 +416,13 @@ trait TransactionGenerators extends BitcoinSLogger {
     sequence <- NumberGenerator.uInt32s
     csvScriptNum <- NumberGenerator.uInt32s.map(x => ScriptNumber(x.underlying)).suchThat(x => ScriptInterpreter.isLockTimeBitOff(x))
   } yield (csvScriptNum, sequence)).suchThat(x => !csvLockTimesOfSameType(x))
+
+
+  /** Creates the [[ScriptPubKey]] we are paying to on the sidechain */
+  private def createUserSidechainScriptPubKey(contract: Contract): ScriptPubKey = contract.prefix match {
+    case P2PHContractPrefix => P2PKHScriptPubKey(contract.hash)
+    case P2SHContractPrefix => P2SHScriptPubKey(contract.hash)
+  }
 }
 
 object TransactionGenerators extends TransactionGenerators

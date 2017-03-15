@@ -3,7 +3,7 @@ package org.bitcoins.core.script.crypto
 import org.bitcoins.core.crypto._
 import org.bitcoins.core.currency.CurrencyUnits
 import org.bitcoins.core.protocol.blockchain.MerkleBlock
-import org.bitcoins.core.protocol.script.{P2PKHScriptPubKey, P2SHScriptPubKey, ScriptPubKey}
+import org.bitcoins.core.protocol.script._
 import org.bitcoins.core.protocol.transaction.{EmptyTransactionOutput, Transaction, TransactionOutput}
 import org.bitcoins.core.script.{ScriptProgram, _}
 import org.bitcoins.core.script.constant._
@@ -13,6 +13,7 @@ import org.bitcoins.core.script.result._
 import org.bitcoins.core.util.{BitcoinSLogger, BitcoinScriptUtil, CryptoUtil}
 
 import scala.annotation.tailrec
+import scala.util.Try
 
 
 /**
@@ -248,12 +249,12 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
     *
     * Implementation in elements:
     * [[https://github.com/ElementsProject/elements/blob/elements-0.13.1/src/script/interpreter.cpp#L1419]]
+    *
     * @param program
     * @return
     */
   def opWithdrawProofVerify(program : ScriptProgram) : ScriptProgram = {
     require(program.script.headOption == Some(OP_WITHDRAWPROOFVERIFY), "Script operation is required to be OP_WITHDRAWPROOFVERIFY")
-    logger.info("stack: " + program.stack)
     if (program.stack.size >= 7) {
       return ScriptProgram(program,ScriptErrorInvalidStackOperation)
     }
@@ -270,7 +271,7 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
     require(program.txSignatureComponent.isInstanceOf[FedPegTransactionSignatureComponent])
     val fPegTxSigComponent = program.txSignatureComponent.asInstanceOf[FedPegTransactionSignatureComponent]
 
-    val relockScript: ScriptPubKey = ScriptPubKey(Seq(BytesToPushOntoStack(32),genesisHashToken, OP_WITHDRAWPROOFVERIFY))
+    val relockScript: ScriptPubKey = WithdrawScriptPubKey(DoubleSha256Digest(genesisHashToken.bytes))
 
     //regular withdraw from the sidechain
 
@@ -292,8 +293,9 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
         throw new IllegalArgumentException("We expect a ScriptConstant for a MerkleBlock in OP_WITHDRAWPROOFVERIFY, got: " + scriptOp)
     }
 
-    val contract: Seq[Byte] = program.stack(4) match {
-      case constant: ScriptConstant => constant.bytes
+    val contract: Try[Contract] = program.stack(4) match {
+      case constant: ScriptConstant =>
+        Try(Contract(constant.bytes))
       case scriptOp: ScriptOperation =>
         throw new IllegalArgumentException("We expect a constant for our contract in OP_WITHDRAWPROOFVERIFY, got: " + scriptOp)
     }
@@ -308,8 +310,8 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
     val partialMerkleTree = merkleBlock.partialMerkleTree
     val matchedTxs: Seq[DoubleSha256Digest] = partialMerkleTree.extractMatches
 
-    if (partialMerkleTree.tree.value != Some(merkleBlock.blockHeader.merkleRootHash) || matchedTxs.length != 1) {
-      logger.error("Same root value: " + (partialMerkleTree.tree.value != Some(merkleBlock.blockHeader.merkleRootHash)))
+    if (!partialMerkleTree.tree.value.contains(merkleBlock.blockHeader.merkleRootHash) || matchedTxs.length != 1) {
+      logger.error("Same root value: " + (!partialMerkleTree.tree.value.contains(merkleBlock.blockHeader.merkleRootHash)))
       logger.error("Matched more than one tx: " + (matchedTxs.length != 1) + " matchedTxs length: " + matchedTxs.length)
       logger.error("Incorrect partial merkle tree root hash or matched more than one tx in merkle tree")
       return ScriptProgram(program,ScriptErrorWithdrawVerifyBlock)
@@ -339,7 +341,7 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
       return ScriptProgram(program, ScriptErrorWithdrawVerifyLockTx)
     }
 
-    if (contract.length != 40) {
+    if (contract.isFailure) {
       logger.error("Incorrect withdrawl contract format")
       return ScriptProgram(program, ScriptErrorWithdrawVerifyFormat)
     }
@@ -378,9 +380,11 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
       return ScriptProgram(program, ScriptErrorWithdrawVerifyOutputScriptDest)
     }
 
+/*
     val contractWithoutNonce = contract.take(4) ++ contract.slice(20,contract.length)
 
     require(contractWithoutNonce.length == 24, "Contract must be 24 bytes in size after removing nonce")
+*/
 
     // We check values by doing the following:
 
@@ -419,9 +423,9 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
       return ScriptProgram(program, ScriptErrorWithdrawVerifyOutputVal)
     }
 
-    val expectedWithdrawScriptPubKey: Option[ScriptPubKey] = parseWithdrawScriptPubKey(contractWithoutNonce)
+    val expectedWithdrawScriptPubKey: ScriptPubKey = parseWithdrawScriptPubKey(contract.get)
 
-    if (!expectedWithdrawScriptPubKey.contains(withdrawOutput.scriptPubKey)) {
+    if (expectedWithdrawScriptPubKey != withdrawOutput.scriptPubKey) {
       logger.error("Incorrect withdrawl scriptPubKey")
       logger.error("Expected withdraw scriptPubKey: " + expectedWithdrawScriptPubKey)
       logger.error("Actual withdraw scriptPubKey: " + withdrawOutput.scriptPubKey)
@@ -466,6 +470,7 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
     *
     * Implementation in elements:
     * https://github.com/ElementsProject/elements/blob/alpha/src/script/interpreter.cpp#L1584
+    *
     * @param program
     * @return
     */
@@ -479,7 +484,8 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
    * This is a higher order function designed to execute a hash function on the stack top of the program
    * For instance, we could pass in CryptoUtil.sha256 function as the 'hashFunction' argument, which would then
    * apply sha256 to the stack top
-   * @param program the script program whose stack top needs to be hashed
+    *
+    * @param program the script program whose stack top needs to be hashed
    * @param hashFunction the hash function which needs to be used on the stack top (sha256,ripemd160,etc..)
    * @return
    */
@@ -537,15 +543,13 @@ trait CryptoInterpreter extends ControlOperationsInterpreter with BitcoinSLogger
   /** Parses the withdraw script pubkey from the given contract
     * [[https://github.com/ElementsProject/elements/blob/6a3b75d257eeb9b4729e658821d3999430a5d5be/src/script/interpreter.cpp#L1567-L1573]]
     */
-  private def parseWithdrawScriptPubKey(contract: Seq[Byte]): Option[ScriptPubKey] = {
-    if (contract.isEmpty) {
-      None
-    } else if (contract.head == 'P' && contract(1) == '2' && contract(2) == 'S' && contract(3) == 'H') {
-      val redeemScriptHash = Sha256Hash160Digest(contract.slice(4,24))
-      Some(P2SHScriptPubKey(redeemScriptHash))
-    } else if (contract.head == 'P' && contract(1) == '2' && contract(2) == 'P' && contract(3) == 'H') {
-      val pubKeyHash = Sha256Hash160Digest(contract.slice(4,24))
-      Some(P2PKHScriptPubKey(pubKeyHash))
-    } else None
+  private def parseWithdrawScriptPubKey(contract: Contract): ScriptPubKey = contract.prefix match {
+    case P2PHContractPrefix =>
+      val hash = contract.hash
+      P2PKHScriptPubKey(hash)
+    case P2SHContractPrefix =>
+      val hash = contract.hash
+      P2SHScriptPubKey(hash)
   }
+
 }

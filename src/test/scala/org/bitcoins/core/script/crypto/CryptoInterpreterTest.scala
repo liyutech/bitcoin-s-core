@@ -212,8 +212,7 @@ class CryptoInterpreterTest extends FlatSpec with MustMatchers with CryptoInterp
     val (sidechainCreditingTx,outputIndex) = buildSidechainCreditingTx(genesisBlockHash)
     val sidechainCreditingOutput = sidechainCreditingTx.outputs(outputIndex)
     val sidechainUserOutput = TransactionOutput(amount,P2PKHScriptPubKey(usersHash))
-    val relockScriptPubKey = ScriptPubKey.fromAsm(Seq(BytesToPushOntoStack(32),
-      ScriptConstant(genesisBlockHash.bytes), OP_WITHDRAWPROOFVERIFY))
+    val relockScriptPubKey = WithdrawScriptPubKey(DoubleSha256Digest(genesisBlockHash.bytes))
     val relockAmount = sidechainCreditingOutput.value - amount
     val sidechainFederationRelockOutput = TransactionOutput(relockAmount, relockScriptPubKey)
     val sidechainReceivingTx = Transaction(TransactionConstants.version,Seq(TransactionGenerators.input.sample.get),

@@ -14,7 +14,6 @@ import org.scalacheck.{Prop, Properties}
   */
 class TransactionSignatureCreatorSpec extends Properties("TransactionSignatureCreatorSpec") with BitcoinSLogger {
 
-/*
   property("Must generate a valid signature for a p2pk transaction") =
     Prop.forAll(TransactionGenerators.signedP2PKTransaction) {
       case (txSignatureComponent: TransactionSignatureComponent, _) =>
@@ -139,7 +138,6 @@ class TransactionSignatureCreatorSpec extends Properties("TransactionSignatureCr
       if (result != ScriptOk) logger.warn("Result: " + result)
       Seq(ScriptErrorPushSize, ScriptOk).contains(result)
     }
-*/
 
   property("generate a valid withdrawl tx from a sidechain") =
     Prop.forAll(TransactionGenerators.withdrawlTransaction) { case (fPegSigComponent, privKeys) =>
