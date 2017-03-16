@@ -22,7 +22,7 @@ class WithdrawScriptSignatureSpec extends Properties("WithdrawScriptSignatureSpe
 
   property("methods to access individual fields must work") =
     Prop.forAllNoShrink(ScriptGenerators.contract, MerkleGenerator.merkleBlockWithInsertedTxIds,
-      TransactionGenerators.transaction) { case (contract: Seq[Byte],
+      TransactionGenerators.transaction) { case (contract: Contract,
     merkleBlockTuple: (MerkleBlock,Block,Seq[DoubleSha256Digest]),
     lockingTx: Transaction) =>
       val (merkleBlock,_,_) = merkleBlockTuple

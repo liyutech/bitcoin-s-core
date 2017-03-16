@@ -498,12 +498,14 @@ object ScriptSignature extends Factory[ScriptSignature] with BitcoinSLogger {
 sealed trait WithdrawScriptSignature extends ScriptSignature {
   override def signatures = Nil
 
-  def contract: Seq[Byte] = asm(1).bytes
+  /** This is the contract the user used to lock up coins on the blockchain we are pegged to.
+    * It contains an address that we pay to on the sidechain if the OP_WPV script passes. */
+  def contract: Contract = Contract(asm(1).bytes)
 
   /** The hash for which we need to pay to on the sidechain
     * This is the address the user specified when paying to our
     * p2sh address on the blockchain we are pegged to */
-  def userHash: Sha256Hash160Digest = Sha256Hash160Digest(contract.takeRight(20))
+  def userHash: Sha256Hash160Digest = contract.hash
 
   /** [[MerkleBlock]] that proves the [[lockingTransaction]] is included in the block */
   def merkleBlock: MerkleBlock = MerkleBlock(asm(merkleBlockIndex).bytes)
@@ -534,7 +536,6 @@ sealed trait WithdrawScriptSignature extends ScriptSignature {
       //TODO: Investigate this further, can we technically have negative output indexes as script numbers can be negative?
       UInt32(num.toLong)
     case constant: ScriptConstant =>
-      logger.error("Asm: " + asm)
       throw new IllegalArgumentException("Cannot have a constant represent lockTxOutputIndex, got:" + constant)
     case scriptOp: ScriptOperation =>
       throw new IllegalArgumentException("Cannot have a script operation represent a lockTxOutputIndex, got: " + scriptOp)
@@ -544,12 +545,12 @@ sealed trait WithdrawScriptSignature extends ScriptSignature {
 object WithdrawScriptSignature extends ScriptFactory[WithdrawScriptSignature] {
   private case class WithdrawScriptSignatureImpl(hex: String) extends WithdrawScriptSignature
 
-  def apply(contract: Seq[Byte], merkleBlock: MerkleBlock, lockingTx: Transaction, outputIndex: UInt32): WithdrawScriptSignature = {
+  def apply(contract: Contract, merkleBlock: MerkleBlock, lockingTx: Transaction, outputIndex: UInt32): WithdrawScriptSignature = {
 
     val num: ScriptNumber = ScriptNumberOperation.fromNumber(outputIndex.toInt).getOrElse(ScriptNumber(outputIndex.toInt))
     val asm: Seq[ScriptToken] =
-      BitcoinScriptUtil.calculatePushOp(contract) ++
-      Seq(ScriptConstant(contract)) ++
+      BitcoinScriptUtil.calculatePushOp(contract.bytes) ++
+      Seq(ScriptConstant(contract.bytes)) ++
       BitcoinScriptUtil.calculatePushOp(merkleBlock.bytes) ++
       Seq(ScriptConstant(merkleBlock.bytes)) ++
       BitcoinScriptUtil.calculatePushOp(lockingTx.bytes) ++

@@ -1,5 +1,7 @@
 package org.bitcoins.core.gen
 
+import java.security.SecureRandom
+
 import org.bitcoins.core.crypto.{TransactionSignatureCreator, _}
 import org.bitcoins.core.currency.{CurrencyUnit, CurrencyUnits}
 import org.bitcoins.core.number.UInt32
@@ -70,14 +72,18 @@ trait ScriptGenerators extends BitcoinSLogger {
     sigs = privKeys.map(key => key.sign(hash))
   } yield CSVScriptSignature(csv, sigs, pubKeys)
 
+  def contract(hash: Sha256Hash160Digest): Gen[Contract] = for {
+    prefix <- contractPrefix
+    c = Contract(prefix,hash)
+  } yield c
 
   /** Generator for a contract used within a [[WithdrawScriptSignature]] */
-  def contract: Gen[Seq[Byte]] = for {
-    userSidechainAddr <- CryptoGenerators.sha256Hash160Digest
-    contractByte <- NumberGenerator.byte
-    labelAndNonce = 0.until(20).map(_ => contractByte)
-    c = labelAndNonce ++ userSidechainAddr.bytes
+  def contract: Gen[Contract] = for {
+    hash <- CryptoGenerators.sha256Hash160Digest
+    c <- contract(hash)
   } yield c
+
+  def contractPrefix: Gen[ContractPrefix] = Gen.oneOf(Seq(P2PHContractPrefix, P2SHContractPrefix))
 
   def withdrawScriptSignature: Gen[WithdrawScriptSignature] = for {
     c <- contract
@@ -446,7 +452,7 @@ trait ScriptGenerators extends BitcoinSLogger {
   }
 
 
-  /** Returns a valid withdrawl script signature, the [[WithdrawScriptPubKey]] it spends and
+  /** Returns a valid [[WithdrawScriptSignature]], the [[WithdrawScriptPubKey]] it spends and
     * the federated peg scriptPubkey */
   def withdrawlScript: Gen[(WithdrawScriptSignature, WithdrawScriptPubKey, ScriptPubKey, CurrencyUnit)] = for {
     genesisBlockHash <- CryptoGenerators.doubleSha256Digest
@@ -455,14 +461,15 @@ trait ScriptGenerators extends BitcoinSLogger {
     amount <- CurrencyUnitGenerator.satoshis.suchThat(_ <= reserveAmount)
     (sidechainCreditingTx,outputIndex) = TransactionGenerators.buildSidechainCreditingTx(genesisBlockHash, reserveAmount)
     sidechainCreditingOutput = sidechainCreditingTx.outputs(outputIndex.toInt)
-
-    contract = BitcoinSUtil.decodeHex("5032504800000000000000000000000000000000") ++ userSidechainAddr.bytes
+    c <- contract(userSidechainAddr)
     (fedPegScript,_) <- ScriptGenerators.multiSigScriptPubKey
     lockingScriptPubKey = P2SHScriptPubKey(fedPegScript)
     (lockTx,lockTxOutputIndex) = TransactionGenerators.buildCreditingTransaction(lockingScriptPubKey,amount)
     (merkleBlock,_,_) <- MerkleGenerator.merkleBlockWithInsertedTxIds(Seq(lockTx))
-    withdrawlScriptSig = WithdrawScriptSignature(contract,merkleBlock,lockTx,outputIndex)
+    withdrawlScriptSig = WithdrawScriptSignature(c,merkleBlock,lockTx,outputIndex)
   } yield (withdrawlScriptSig,sidechainCreditingOutput.scriptPubKey.asInstanceOf[WithdrawScriptPubKey],fedPegScript,reserveAmount)
+
+
 }
 
 object ScriptGenerators extends ScriptGenerators
