@@ -74,7 +74,19 @@ case object OP_CHECKMULTISIGVERIFY extends CryptoSignatureEvaluation {
   override def opCode = 175
 }
 
+
+case object OP_WITHDRAWPROOFVERIFY extends CryptoOperation {
+  override def opCode = 179
+  /** Currently overriden to OP_NOP4 so we can read it correctly for tests in script_tests.json */
+  override def toString = "OP_NOP4"
+}
+case object OP_REORGPROOFVERIFY extends CryptoOperation {
+  override def opCode = 180
+  /** Currently overriden to OP_NOP5 so we can read it correctly for tests in script_tests.json */
+  override def toString = "OP_NOP5"
+}
+
 object CryptoOperation extends ScriptOperationFactory[CryptoOperation] {
   override def operations = Seq(OP_CHECKMULTISIG, OP_CHECKMULTISIGVERIFY, OP_CHECKSIG, OP_CHECKSIGVERIFY,
-    OP_CODESEPARATOR, OP_HASH160, OP_HASH256, OP_RIPEMD160, OP_SHA1, OP_SHA256)
+    OP_CODESEPARATOR, OP_HASH160, OP_HASH256, OP_RIPEMD160, OP_SHA1, OP_SHA256, OP_WITHDRAWPROOFVERIFY, OP_REORGPROOFVERIFY)
 }

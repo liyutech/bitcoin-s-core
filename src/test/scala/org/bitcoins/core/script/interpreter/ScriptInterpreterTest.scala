@@ -45,6 +45,7 @@ class ScriptInterpreterTest extends FlatSpec with MustMatchers with ScriptInterp
       logger.info("Raw test case: " + testCase.raw)
       logger.info("Parsed ScriptSig: " + testCase.scriptSig)
       logger.info("Parsed ScriptPubKey: " + testCase.scriptPubKey)
+      logger.debug("Parsed scriptPubKey asm: " + testCase.scriptPubKey.asm)
       logger.info("Parsed tx: " + tx.hex)
       logger.info("Flags: " + testCase.flags)
       logger.info("Comments: " + testCase.comments)
